@@ -128,6 +128,12 @@ def encode(
     if key:
         headers["X-API-Key"] = key
 
+    # Count nodes for error reporting
+    node_set = set()
+    for e in normalized:
+        node_set.add(e[0])
+        node_set.add(e[1])
+
     payload = {"edges": normalized}
 
     start = time.perf_counter()
@@ -141,9 +147,16 @@ def encode(
     if resp.status_code == 401:
         raise AuthenticationError("Invalid API key. Check your license key or sign up at https://semanticembed.com")
     if resp.status_code == 403:
-        body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
-        limit = body.get("limit", FREE_TIER_LIMIT)
-        n_nodes = body.get("n_nodes", 0)
+        detail = resp.text[:300]
+        # Parse node count from detail message if possible
+        import re
+        match = re.search(r"(\d+) nodes.*limit.*?(\d+)", detail)
+        if match:
+            n_nodes = int(match.group(1))
+            limit = int(match.group(2))
+        else:
+            n_nodes = len(node_set)
+            limit = FREE_TIER_LIMIT
         raise NodeLimitError(n_nodes, limit)
     if resp.status_code >= 400:
         detail = resp.text[:200]
