@@ -4,6 +4,19 @@
 
 SemanticEmbed computes a 6-dimensional structural encoding for every node in a directed graph. From a bare edge list -- no runtime telemetry, no historical data, no tuning -- it produces six independent measurements that fully describe each node's structural role.
 
+> **Validated against production incidents.** In a blind test against a live production environment (100+ services, 2,500+ incidents over 30 days), 6D structural analysis predicted ~80% of topology-relevant incidents from the call graph alone -- before any incident occurred.
+
+---
+
+## Why 6D?
+
+Observability tools tell you **what broke**. SemanticEmbed tells you **what will break** -- from topology alone.
+
+- **No agents, no instrumentation** -- just an edge list
+- **Sub-millisecond** -- encodes 100+ node graphs in <1ms
+- **Works on any directed graph** -- microservices, AI agent pipelines, data workflows, CI/CD
+- **Mathematically independent axes** -- six dimensions, zero redundancy, each captures structural information no other metric provides
+
 ---
 
 ## Try It Now
@@ -66,6 +79,49 @@ STRUCTURAL SPOF (low independence, high upstream dependency):
 
 ---
 
+## What It Finds That Other Tools Miss
+
+| Your current tools | SemanticEmbed |
+|---|---|
+| This service has high latency | This service is on 89% of all paths (structural SPOF) |
+| This service had 5 errors | This service fans out to 12 downstream services (amplification risk) |
+| This service is healthy | This service has zero lateral redundancy (convergence sink) |
+
+Runtime monitoring tells you what is slow **now**. Structural analysis tells you what **will** cause cascading failures regardless of current load.
+
+---
+
+## The Six Dimensions
+
+Every node gets six independent structural measurements:
+
+| Dimension | What It Measures | Risk Signal |
+|-----------|-----------------|-------------|
+| **Depth** | Position in the execution pipeline (0.0 = entry, 1.0 = deepest) | Deep nodes accumulate upstream latency |
+| **Independence** | Lateral redundancy at the same pipeline stage | Low independence = structural chokepoint |
+| **Hierarchy** | Module or group membership | Cross-module dependencies = blast radius |
+| **Throughput** | Fraction of total traffic flowing through the node | High throughput + low independence = hidden bottleneck |
+| **Criticality** | Fraction of end-to-end paths depending on this node | High criticality = SPOF |
+| **Fanout** | Broadcaster (1.0) vs aggregator (0.0) | High fanout = amplification risk |
+
+These six properties are mathematically independent -- knowing any five tells you nothing about the sixth.
+
+See [docs/dimensions.md](docs/dimensions.md) for the full reference.
+
+---
+
+## Use Cases
+
+**Microservice architectures** -- Find SPOFs, amplification cascades, and convergence bottlenecks in any service mesh. Works with Kubernetes, Istio, OTel traces, or static architecture diagrams.
+
+**AI agent pipelines** -- Identify vendor concentration risk, gateway bottlenecks, and guardrail single points of failure in LLM orchestration graphs.
+
+**CI/CD and data pipelines** -- Detect structural fragility in build graphs, ETL workflows, and deployment pipelines before they cause cascading failures.
+
+**Architecture drift monitoring** -- Compare structural fingerprints across releases. Know exactly which services changed structural role and by how much.
+
+---
+
 ## Notebooks
 
 Step-by-step Colab notebooks. Click to open, run in your browser.
@@ -79,25 +135,6 @@ Step-by-step Colab notebooks. Click to open, run in your browser.
 
 ---
 
-## The Six Dimensions
-
-Every node gets six independent structural measurements:
-
-| Dimension | What It Measures |
-|-----------|-----------------|
-| **Depth** | Position in the execution pipeline (0.0 = entry, 1.0 = deepest) |
-| **Independence** | Lateral redundancy at the same pipeline stage |
-| **Hierarchy** | Module or group membership |
-| **Throughput** | Fraction of total traffic flowing through the node |
-| **Criticality** | Fraction of end-to-end paths depending on this node |
-| **Fanout** | Broadcaster (1.0) vs aggregator (0.0) |
-
-These six properties are mathematically independent -- knowing any five tells you nothing about the sixth.
-
-See [docs/dimensions.md](docs/dimensions.md) for the full reference.
-
----
-
 ## Example Graphs
 
 The `examples/` directory contains edge lists for well-known architectures:
@@ -105,8 +142,8 @@ The `examples/` directory contains edge lists for well-known architectures:
 | File | Application | Nodes | Edges |
 |------|------------|-------|-------|
 | [google_online_boutique.json](examples/google_online_boutique.json) | Google Online Boutique | 11 | 15 |
-| [weaveworks_sock_shop.json](examples/weaveworks_sock_shop.json) | Weaveworks Sock Shop | 14 | 15 |
-| [sample_pipeline.json](examples/sample_pipeline.json) | Generic Data Pipeline | 10 | 10 |
+
+More example graphs coming soon.
 
 ---
 
@@ -138,18 +175,6 @@ See [docs/input_format.md](docs/input_format.md) for the full spec.
 
 ---
 
-## What It Finds That Other Tools Miss
-
-| Your current tools | SemanticEmbed |
-|---|---|
-| This service has high latency | This service is on 89% of all paths (structural SPOF) |
-| This service had 5 errors | This service fans out to 12 downstream services (amplification risk) |
-| This service is healthy | This service has zero lateral redundancy (convergence sink) |
-
-Runtime monitoring tells you what is slow **now**. Structural analysis tells you what **will** cause cascading failures regardless of current load.
-
----
-
 ## Documentation
 
 | Document | Description |
@@ -157,7 +182,6 @@ Runtime monitoring tells you what is slow **now**. Structural analysis tells you
 | [docs/dimensions.md](docs/dimensions.md) | The six structural dimensions -- full reference |
 | [docs/input_format.md](docs/input_format.md) | Edge list input specification |
 | [docs/output_format.md](docs/output_format.md) | Encoding output and risk report format |
-
 
 ---
 
@@ -172,4 +196,4 @@ Free tier available for graphs up to 50 nodes. See [LICENSE](LICENSE) for terms.
 
 ## Contact
 
-Email jeff@semanticembed.com
+Email jeffmurr@seas.upenn.edu
