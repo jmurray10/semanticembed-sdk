@@ -181,6 +181,8 @@ See [docs/input_format.md](docs/input_format.md) for the full spec.
 
 | Document | Description |
 |----------|-------------|
+| [docs/getting_started.md](docs/getting_started.md) | Install, encode, read results, export -- one page |
+| [docs/api_reference.md](docs/api_reference.md) | Every function, class, parameter, and return type |
 | [docs/dimensions.md](docs/dimensions.md) | The six structural dimensions -- full reference |
 | [docs/input_format.md](docs/input_format.md) | Edge list input specification |
 | [docs/output_format.md](docs/output_format.md) | Encoding output and risk report format |
