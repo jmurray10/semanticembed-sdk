@@ -1,5 +1,7 @@
 """SemanticEmbed SDK — 6D structural intelligence for directed graphs."""
 
+from __future__ import annotations
+
 from .client import encode, encode_file, report, drift
 from .models import SemanticResult, RiskReport, RiskEntry, DIMENSION_NAMES
 from .exceptions import (
@@ -7,7 +9,7 @@ from .exceptions import (
     AuthenticationError,
     NodeLimitError,
     APIError,
-    ConnectionError,
+    SemanticConnectionError,
 )
 
 __version__ = "0.1.0"
@@ -30,6 +32,6 @@ __all__ = [
     "AuthenticationError",
     "NodeLimitError",
     "APIError",
-    "ConnectionError",
+    "SemanticConnectionError",
     "license_key",
 ]

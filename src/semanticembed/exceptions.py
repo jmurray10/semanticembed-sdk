@@ -30,5 +30,5 @@ class APIError(SemanticEmbedError):
         super().__init__(f"API error {status}: {detail}")
 
 
-class ConnectionError(SemanticEmbedError):
+class SemanticConnectionError(SemanticEmbedError):
     """Could not connect to the SemanticEmbed API."""

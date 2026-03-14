@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 
-from .exceptions import APIError, AuthenticationError, ConnectionError, NodeLimitError
+from .exceptions import APIError, AuthenticationError, SemanticConnectionError, NodeLimitError
 from .models import DIMENSION_NAMES, RiskEntry, RiskReport, SemanticResult
 
 DEFAULT_API_URL = "https://semanticembed-api-production.up.railway.app"
@@ -135,7 +135,7 @@ def encode(
         with httpx.Client(timeout=timeout) as client:
             resp = client.post(f"{url}/api/v1/encode", headers=headers, json=payload)
     except httpx.ConnectError as e:
-        raise ConnectionError(f"Could not connect to SemanticEmbed API at {url}: {e}") from e
+        raise SemanticConnectionError(f"Could not connect to SemanticEmbed API at {url}: {e}") from e
     elapsed_ms = (time.perf_counter() - start) * 1000
 
     if resp.status_code == 401:
