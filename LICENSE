@@ -1,0 +1,18 @@
+SemanticEmbed SDK License
+
+Copyright (c) 2026 SemanticEmbed Inc. All rights reserved.
+
+This software is proprietary and confidential. Unauthorized copying,
+distribution, modification, or use of this software, via any medium,
+is strictly prohibited.
+
+The SemanticEmbed SDK is distributed as a compiled package for the
+sole purpose of interfacing with the SemanticEmbed cloud API. It does
+not contain the encoding algorithm or any proprietary computation logic.
+
+Free tier: graphs up to 50 nodes, no signup required.
+Paid tier: unlimited nodes, requires a valid license key.
+
+Patent pending. Application #63/994,075.
+
+For licensing inquiries: jeff@semanticembed.com
