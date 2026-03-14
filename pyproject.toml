@@ -30,8 +30,8 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://semanticembed.com"
-Documentation = "https://github.com/semanticembed/sdk"
-Repository = "https://github.com/semanticembed/sdk"
+Documentation = "https://github.com/jmurray10/semanticembed-sdk"
+Repository = "https://github.com/jmurray10/semanticembed-sdk"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/semanticembed"]

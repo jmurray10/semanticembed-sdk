@@ -8,7 +8,7 @@ SemanticEmbed computes a 6-dimensional structural encoding for every node in a d
 
 ## Try It Now
 
-**[Open the Interactive Demo in Google Colab](https://colab.research.google.com/github/semanticembed/sdk/blob/main/notebooks/01_quickstart.ipynb)** -- runs in your browser, nothing to install locally.
+**[Open the Interactive Demo in Google Colab](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/01_quickstart.ipynb)** -- runs in your browser, nothing to install locally.
 
 ---
 
@@ -19,7 +19,6 @@ pip install semanticembed
 ```
 
 **Free tier:** Up to 50 nodes per graph. No signup required.
-**Paid tier:** Unlimited nodes, continuous monitoring, CI/CD integration. [See pricing](https://semanticembed.com/pricing).
 
 ---
 
@@ -73,10 +72,10 @@ Step-by-step Colab notebooks. Click to open, run in your browser.
 
 | Notebook | What You Learn |
 |----------|---------------|
-| [01 - Quickstart](https://colab.research.google.com/github/semanticembed/sdk/blob/main/notebooks/01_quickstart.ipynb) | Install, encode a graph, read the risk report |
-| [02 - Dimensions Deep Dive](https://colab.research.google.com/github/semanticembed/sdk/blob/main/notebooks/02_dimensions.ipynb) | What each of the six dimensions means, with examples |
-| [03 - Drift Detection](https://colab.research.google.com/github/semanticembed/sdk/blob/main/notebooks/03_drift_detection.ipynb) | Compare two versions of a graph, detect structural changes |
-| [04 - Bring Your Own Graph](https://colab.research.google.com/github/semanticembed/sdk/blob/main/notebooks/04_bring_your_own.ipynb) | Encode your own architecture from JSON, OTel, or K8s |
+| [01 - Quickstart](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/01_quickstart.ipynb) | Install, encode a graph, read the risk report |
+| [02 - Dimensions Deep Dive](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/02_dimensions.ipynb) | What each of the six dimensions means, with examples |
+| [03 - Drift Detection](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/03_drift_detection.ipynb) | Compare two versions of a graph, detect structural changes |
+| [04 - Bring Your Own Graph](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/04_bring_your_own.ipynb) | Encode your own architecture from JSON, OTel, or K8s |
 
 ---
 
@@ -158,7 +157,7 @@ Runtime monitoring tells you what is slow **now**. Structural analysis tells you
 | [docs/dimensions.md](docs/dimensions.md) | The six structural dimensions -- full reference |
 | [docs/input_format.md](docs/input_format.md) | Edge list input specification |
 | [docs/output_format.md](docs/output_format.md) | Encoding output and risk report format |
-| [docs/license_keys.md](docs/license_keys.md) | Activating a paid license key |
+
 
 ---
 
@@ -171,8 +170,6 @@ Free tier available for graphs up to 50 nodes. See [LICENSE](LICENSE) for terms.
 
 ---
 
-## Links
+## Contact
 
-- [Website](https://semanticembed.com)
-- [Pricing](https://semanticembed.com/pricing)
-- [Contact](mailto:jeff@semanticembed.com)
+Email jeff@semanticembed.com
