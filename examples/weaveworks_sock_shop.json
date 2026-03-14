@@ -1,0 +1,21 @@
+{
+  "name": "Weaveworks Sock Shop",
+  "description": "Cloud-native microservices demo application with 14 services on Kubernetes. Source: https://github.com/microservices-demo/microservices-demo",
+  "edges": [
+    {"source": "edge-router", "target": "frontend"},
+    {"source": "frontend", "target": "catalogue"},
+    {"source": "frontend", "target": "orders"},
+    {"source": "frontend", "target": "user"},
+    {"source": "frontend", "target": "carts"},
+    {"source": "orders", "target": "shipping"},
+    {"source": "orders", "target": "payment"},
+    {"source": "orders", "target": "carts"},
+    {"source": "orders", "target": "user"},
+    {"source": "catalogue", "target": "catalogue-db"},
+    {"source": "carts", "target": "carts-db"},
+    {"source": "orders", "target": "orders-db"},
+    {"source": "user", "target": "user-db"},
+    {"source": "shipping", "target": "rabbitmq"},
+    {"source": "queue-master", "target": "rabbitmq"}
+  ]
+}

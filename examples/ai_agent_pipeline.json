@@ -1,0 +1,21 @@
+{
+  "name": "Production AI Agent Pipeline",
+  "description": "Multi-agent LLM orchestration system with supervisor, 4 specialist agents, guardrails, and RAG pipeline.",
+  "edges": [
+    {"source": "supervisor", "target": "planner-agent"},
+    {"source": "supervisor", "target": "research-agent"},
+    {"source": "supervisor", "target": "code-agent"},
+    {"source": "supervisor", "target": "writer-agent"},
+    {"source": "planner-agent", "target": "openai-gpt4"},
+    {"source": "research-agent", "target": "openai-gpt4"},
+    {"source": "code-agent", "target": "openai-gpt4"},
+    {"source": "writer-agent", "target": "openai-gpt4"},
+    {"source": "supervisor", "target": "input-guardrail"},
+    {"source": "supervisor", "target": "output-guardrail"},
+    {"source": "input-guardrail", "target": "openai-moderation"},
+    {"source": "output-guardrail", "target": "openai-moderation"},
+    {"source": "research-agent", "target": "rag-retriever"},
+    {"source": "rag-retriever", "target": "embedding-api"},
+    {"source": "embedding-api", "target": "vector-db"}
+  ]
+}

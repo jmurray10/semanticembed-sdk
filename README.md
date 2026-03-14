@@ -4,7 +4,7 @@
 
 SemanticEmbed computes a 6-dimensional structural encoding for every node in a directed graph. From a bare edge list -- no runtime telemetry, no historical data, no tuning -- it produces six independent measurements that fully describe each node's structural role.
 
-> **Validated against production incidents.** In a blind test against a live production environment (100+ services, 2,500+ incidents over 30 days), 6D structural analysis predicted ~80% of topology-relevant incidents from the call graph alone -- before any incident occurred.
+> **Validated against production incidents.** In a blind test against a live production environment (100+ services, 2,500+ incidents over 30 days), the majority of topology-relevant incidents occurred on nodes that 6D structural analysis had flagged as risky -- from the call graph alone, before any incident occurred.
 
 ---
 
@@ -143,9 +143,10 @@ The `examples/` directory contains edge lists for well-known architectures:
 
 | File | Application | Nodes | Edges |
 |------|------------|-------|-------|
-| [google_online_boutique.json](examples/google_online_boutique.json) | Google Online Boutique | 11 | 15 |
-
-More example graphs coming soon.
+| [google_online_boutique.json](examples/google_online_boutique.json) | Google Online Boutique (microservices) | 11 | 15 |
+| [weaveworks_sock_shop.json](examples/weaveworks_sock_shop.json) | Weaveworks Sock Shop (microservices) | 15 | 15 |
+| [ai_agent_pipeline.json](examples/ai_agent_pipeline.json) | Multi-agent LLM orchestration | 12 | 15 |
+| [cicd_pipeline.json](examples/cicd_pipeline.json) | CI/CD build pipeline | 13 | 17 |
 
 ---
 

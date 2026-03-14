@@ -29,7 +29,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://semanticembed.com"
+Homepage = "https://github.com/jmurray10/semanticembed-sdk"
 Documentation = "https://github.com/jmurray10/semanticembed-sdk"
 Repository = "https://github.com/jmurray10/semanticembed-sdk"
 

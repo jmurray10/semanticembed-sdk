@@ -1,0 +1,23 @@
+{
+  "name": "CI/CD Build Pipeline",
+  "description": "Monorepo CI pipeline with lint, typecheck, build, test, and deploy stages.",
+  "edges": [
+    {"source": "git-push", "target": "lint"},
+    {"source": "git-push", "target": "typecheck"},
+    {"source": "git-push", "target": "security-scan"},
+    {"source": "lint", "target": "build-frontend"},
+    {"source": "lint", "target": "build-backend"},
+    {"source": "typecheck", "target": "build-frontend"},
+    {"source": "typecheck", "target": "build-backend"},
+    {"source": "build-frontend", "target": "unit-tests-fe"},
+    {"source": "build-backend", "target": "unit-tests-be"},
+    {"source": "build-frontend", "target": "integration-tests"},
+    {"source": "build-backend", "target": "integration-tests"},
+    {"source": "unit-tests-fe", "target": "deploy-staging"},
+    {"source": "unit-tests-be", "target": "deploy-staging"},
+    {"source": "integration-tests", "target": "deploy-staging"},
+    {"source": "security-scan", "target": "deploy-staging"},
+    {"source": "deploy-staging", "target": "smoke-tests"},
+    {"source": "smoke-tests", "target": "deploy-prod"}
+  ]
+}

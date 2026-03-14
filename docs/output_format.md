@@ -55,9 +55,9 @@ print(risk)
 
 ### Severity Levels
 
-- **critical** -- multiple risk dimensions at extreme values
-- **high** -- one or more risk dimensions at extreme values
-- **medium** -- moderate risk indicators
+- **critical** -- structural single point of failure or monitoring gap
+- **warning** -- amplification risk, deep bottleneck, or high fanout
+- **info** -- convergence sink or low-risk structural note
 
 ### Programmatic Access
 

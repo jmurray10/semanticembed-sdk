@@ -145,7 +145,7 @@ def encode(
     elapsed_ms = (time.perf_counter() - start) * 1000
 
     if resp.status_code == 401:
-        raise AuthenticationError("Invalid API key. Check your license key or sign up at https://semanticembed.com")
+        raise AuthenticationError("Invalid API key. Check your license key or contact jeffmurr@seas.upenn.edu")
     if resp.status_code == 403:
         detail = resp.text[:300]
         # Parse node count from detail message if possible
