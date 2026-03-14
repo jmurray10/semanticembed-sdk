@@ -134,6 +134,7 @@ Step-by-step Colab notebooks. Click to open, run in your browser.
 | [04 - Bring Your Own Graph](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/04_bring_your_own.ipynb) | Any graph | Load from JSON, OTel traces, or Kubernetes |
 | [05 - AI Agent Pipelines](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/05_ai_agent_pipelines.ipynb) | AI/LLM agents | Vendor concentration, gateway bottlenecks, guardrail SPOFs |
 | [06 - CI/CD & Data Pipelines](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/06_cicd_pipelines.ipynb) | CI/CD & ETL | Build graph fragility, pipeline bottlenecks, drift gates |
+| [07 - OpenTelemetry](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/07_opentelemetry.ipynb) | OTel traces | Extract edges from traces, structural analysis, CI/CD gates |
 
 ---
 
@@ -147,6 +148,34 @@ The `examples/` directory contains edge lists for well-known architectures:
 | [weaveworks_sock_shop.json](examples/weaveworks_sock_shop.json) | Weaveworks Sock Shop (microservices) | 15 | 15 |
 | [ai_agent_pipeline.json](examples/ai_agent_pipeline.json) | Multi-agent LLM orchestration | 12 | 15 |
 | [cicd_pipeline.json](examples/cicd_pipeline.json) | CI/CD build pipeline | 13 | 17 |
+
+---
+
+## React Components
+
+Drop-in React components for rendering SDK results. See [examples/react/](examples/react/) for the full source.
+
+| Component | What it renders |
+|-----------|----------------|
+| `useSemanticEmbed.ts` | React hook — call `encode()` from your frontend |
+| `RiskTable.tsx` | Sortable risk table with severity badges |
+| `RadarChart.tsx` | 6D radar chart comparing node profiles |
+| `TopologySummary.tsx` | KPI cards + risk breakdown |
+
+```tsx
+import { useSemanticEmbed } from './useSemanticEmbed';
+import { RiskTable } from './RiskTable';
+
+function App() {
+  const { result, loading, encode } = useSemanticEmbed();
+  return (
+    <>
+      <button onClick={() => encode([["A","B"],["B","C"],["C","D"]])}>Analyze</button>
+      {result && <RiskTable risks={result.risks} />}
+    </>
+  );
+}
+```
 
 ---
 
