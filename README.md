@@ -104,7 +104,7 @@ Every node gets six independent structural measurements:
 | **Criticality** | Fraction of end-to-end paths depending on this node | High criticality = SPOF |
 | **Fanout** | Broadcaster (1.0) vs aggregator (0.0) | High fanout = amplification risk |
 
-These six properties are mathematically independent -- knowing any five tells you nothing about the sixth.
+These six properties capture complementary structural information. Each dimension provides risk signals the others cannot.
 
 See [docs/dimensions.md](docs/dimensions.md) for the full reference.
 

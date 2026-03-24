@@ -37,9 +37,9 @@ A node with independence 0.0 is the only node at its depth level -- a structural
 
 ## Hierarchy
 
-Which module, cluster, or logical group a node belongs to. Captures community structure.
+Which module, community, or logical group a node belongs to. Computed via Louvain community detection on the undirected graph.
 
-Nodes in the same module have similar hierarchy values. Cross-module dependencies show up as connections between nodes with different hierarchy values.
+Nodes in the same community have similar hierarchy values. Cross-community dependencies show up as connections between nodes with different hierarchy values -- these are integration risk points. Independent of depth: nodes at the same pipeline stage can belong to different modules.
 
 ---
 
@@ -69,14 +69,15 @@ High fanout = amplification risk. A failure here multiplies across all downstrea
 
 ## Independence of Dimensions
 
-The six dimensions are mathematically independent. Knowing any five tells you nothing about the sixth:
+The six dimensions capture complementary structural properties. Each dimension provides information that aids structural analysis:
 
 - A deep node can have high or low throughput
 - A high-traffic node can sit on one path or many paths
 - A node at any depth, throughput, or criticality can be a broadcaster or aggregator
 - Independence has near-zero correlation with all standard centrality measures
+- Hierarchy (community membership) is independent of pipeline position
 
-This independence is what makes the encoding efficient. No dimension is redundant. Every dimension carries structural information that no other dimension provides.
+The independence dimension is the most novel -- it captures a structural property (lateral redundancy) that no standard graph metric can measure.
 
 Adding more dimensions (7, 8, ...) was tested and hurt performance -- the extra dimensions carried redundant information. Six is the natural dimensionality of the structural property space for directed computational graphs.
 
