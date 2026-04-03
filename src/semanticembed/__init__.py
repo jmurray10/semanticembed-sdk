@@ -11,6 +11,7 @@ from .exceptions import (
     APIError,
     SemanticConnectionError,
 )
+from . import extract
 
 __version__ = "0.1.0"
 
@@ -24,6 +25,7 @@ __all__ = [
     "encode_file",
     "report",
     "drift",
+    "extract",
     "SemanticResult",
     "RiskReport",
     "RiskEntry",
