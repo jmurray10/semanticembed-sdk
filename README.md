@@ -15,7 +15,7 @@ Observability tools tell you **what broke**. SemanticEmbed tells you **what will
 - **No agents, no instrumentation** -- just an edge list
 - **Sub-millisecond** -- encodes 100+ node graphs in <1ms
 - **Works on any directed graph** -- microservices, AI agent pipelines, data workflows, CI/CD
-- **Mathematically independent axes** -- six dimensions, zero redundancy, each captures structural information no other metric provides
+- **Complementary structural axes** -- six dimensions, each captures risk signals the others cannot
 
 ---
 
@@ -135,6 +135,39 @@ Step-by-step Colab notebooks. Click to open, run in your browser.
 | [05 - AI Agent Pipelines](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/05_ai_agent_pipelines.ipynb) | AI/LLM agents | Vendor concentration, gateway bottlenecks, guardrail SPOFs |
 | [06 - CI/CD & Data Pipelines](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/06_cicd_pipelines.ipynb) | CI/CD & ETL | Build graph fragility, pipeline bottlenecks, drift gates |
 | [07 - OpenTelemetry](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/07_opentelemetry.ipynb) | OTel traces | Extract edges from traces, structural analysis, CI/CD gates |
+| [08 - Qwen Compression](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/08_qwen_compression.ipynb) | LLM compression | Structural pruning of Qwen2.5-7B, 10% speedup at Grade A |
+
+---
+
+## Extract Edges from Infrastructure
+
+Don't have an edge list? The `extract` module parses common infrastructure files automatically.
+
+```python
+import semanticembed as se
+
+# From Docker Compose
+edges = se.extract.from_docker_compose("docker-compose.yml")
+
+# From Kubernetes manifests
+edges = se.extract.from_kubernetes("k8s/")
+
+# From GitHub Actions workflows
+edges = se.extract.from_github_actions(".github/workflows")
+
+# From Terraform
+edges = se.extract.from_terraform("infra/")
+
+# Auto-detect everything in a directory
+edges, sources = se.extract.from_directory(".")
+print(f"Found {len(edges)} edges from {sources}")
+
+# Then encode as usual
+result = se.encode(edges)
+print(result.table)
+```
+
+Requires `pyyaml`: `pip install pyyaml`
 
 ---
 
