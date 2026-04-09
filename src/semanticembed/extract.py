@@ -1,10 +1,12 @@
-"""Extract edges from infrastructure files.
+"""Extract edges from infrastructure and code files.
 
 Supported formats:
     - docker-compose.yml (depends_on, links)
     - Kubernetes YAML (Service, Deployment, Ingress selectors)
     - GitHub Actions workflows (job needs)
     - Terraform (resource references)
+    - Python imports (module dependency graph)
+    - package.json (Node.js dependencies, monorepo workspaces)
     - Automatic directory scanning
 """
 
@@ -337,6 +339,198 @@ def from_terraform(path: str = ".") -> list[tuple[str, str]]:
 
 
 # ---------------------------------------------------------------------------
+# Python imports
+# ---------------------------------------------------------------------------
+
+def from_python_imports(path: str = ".") -> list[tuple[str, str]]:
+    """Extract module dependency edges from Python import statements.
+
+    Scans ``.py`` files and builds a directed graph of which modules import
+    which. Only includes edges between modules that exist in the scanned
+    directory (ignores stdlib and third-party imports).
+
+    Args:
+        path: Path to a Python file or directory of Python files.
+
+    Returns:
+        List of (importer, imported) edge tuples using module names.
+
+    Example::
+
+        edges = se.extract.from_python_imports("src/")
+        result = se.encode(edges)
+        print(result.table)
+    """
+    if os.path.isfile(path):
+        files = [path]
+        base = os.path.dirname(os.path.abspath(path))
+    else:
+        files = glob.glob(os.path.join(path, "**/*.py"), recursive=True)
+        base = os.path.abspath(path)
+
+    # Build set of local module names from file paths
+    local_modules: set[str] = set()
+    file_to_module: dict[str, str] = {}
+    for f in files:
+        rel = os.path.relpath(f, base).replace(os.sep, "/")
+        # Convert path to module name
+        if rel.endswith("/__init__.py"):
+            mod = rel[:-12].replace("/", ".")
+        elif rel.endswith(".py"):
+            mod = rel[:-3].replace("/", ".")
+        else:
+            continue
+        # Skip hidden/test/venv directories
+        parts = mod.split(".")
+        if any(p.startswith(".") or p == "__pycache__" for p in parts):
+            continue
+        local_modules.add(mod)
+        # Also add each parent package
+        for i in range(1, len(parts)):
+            local_modules.add(".".join(parts[:i]))
+        file_to_module[f] = mod
+
+    import_re = re.compile(
+        r"^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))", re.MULTILINE
+    )
+
+    edges: list[tuple[str, str]] = []
+    for f, src_mod in file_to_module.items():
+        try:
+            with open(f, encoding="utf-8", errors="ignore") as fh:
+                content = fh.read()
+        except Exception:
+            continue
+
+        for match in import_re.finditer(content):
+            imported = match.group(1) or match.group(2)
+            if not imported:
+                continue
+            # Check if the imported module is local
+            # Try the full name, then progressively shorter prefixes.
+            # Also try stripping the first component (handles `from myapp.models.user`
+            # when scanning inside the `myapp/` directory where modules are `models.user`).
+            target = None
+            parts = imported.split(".")
+            candidates = [parts]
+            if len(parts) > 1:
+                candidates.append(parts[1:])  # stripped first component
+            for candidate_parts in candidates:
+                for i in range(len(candidate_parts), 0, -1):
+                    candidate = ".".join(candidate_parts[:i])
+                    if candidate in local_modules and candidate != src_mod:
+                        target = candidate
+                        break
+                if target:
+                    break
+            if target:
+                # Use short names (last component) for readability
+                src_short = src_mod.split(".")[-1]
+                dst_short = target.split(".")[-1]
+                # If short names collide, use longer qualified names
+                if src_short == dst_short:
+                    src_short = src_mod
+                    dst_short = target
+                edges.append((src_short, dst_short))
+
+    return _dedupe(edges)
+
+
+# ---------------------------------------------------------------------------
+# package.json (Node.js)
+# ---------------------------------------------------------------------------
+
+def from_package_json(path: str = "package.json") -> list[tuple[str, str]]:
+    """Extract dependency edges from a package.json file.
+
+    Parses ``dependencies``, ``devDependencies``, and ``peerDependencies``.
+    The project name is the source node, each dependency is a target.
+
+    Args:
+        path: Path to package.json.
+
+    Returns:
+        List of (project, dependency) edge tuples.
+
+    Example::
+
+        edges = se.extract.from_package_json("package.json")
+        result = se.encode(edges)
+        print(result.table)
+    """
+    import json as _json
+
+    with open(path) as f:
+        data = _json.load(f)
+
+    project_name = data.get("name", "project")
+    edges: list[tuple[str, str]] = []
+
+    for dep_key in ("dependencies", "devDependencies", "peerDependencies"):
+        deps = data.get(dep_key, {})
+        if not isinstance(deps, dict):
+            continue
+        for dep_name in deps:
+            edges.append((project_name, dep_name))
+
+    return _dedupe(edges)
+
+
+def from_package_json_workspaces(path: str = ".") -> list[tuple[str, str]]:
+    """Extract inter-package dependency edges from a monorepo with workspaces.
+
+    Scans all package.json files in the workspace and finds edges between
+    local packages (where one workspace package depends on another).
+
+    Args:
+        path: Root directory of the monorepo.
+
+    Returns:
+        List of (package, dependency) edge tuples between local packages.
+
+    Example::
+
+        edges = se.extract.from_package_json_workspaces(".")
+        result = se.encode(edges)
+        print(result.table)
+    """
+    import json as _json
+
+    pkg_files = glob.glob(os.path.join(path, "**/package.json"), recursive=True)
+
+    # Build index of local package names
+    local_packages: dict[str, str] = {}  # name -> path
+    package_data: dict[str, dict] = {}  # name -> parsed json
+
+    for pf in pkg_files:
+        # Skip node_modules
+        if "node_modules" in pf:
+            continue
+        try:
+            with open(pf) as f:
+                data = _json.load(f)
+        except Exception:
+            continue
+        name = data.get("name")
+        if name:
+            local_packages[name] = pf
+            package_data[name] = data
+
+    # Find edges between local packages
+    edges: list[tuple[str, str]] = []
+    for pkg_name, data in package_data.items():
+        for dep_key in ("dependencies", "devDependencies", "peerDependencies"):
+            deps = data.get(dep_key, {})
+            if not isinstance(deps, dict):
+                continue
+            for dep_name in deps:
+                if dep_name in local_packages and dep_name != pkg_name:
+                    edges.append((pkg_name, dep_name))
+
+    return _dedupe(edges)
+
+
+# ---------------------------------------------------------------------------
 # Auto-detect
 # ---------------------------------------------------------------------------
 
@@ -406,6 +600,32 @@ def from_directory(path: str = ".") -> tuple[list[tuple[str, str]], dict[str, in
             if edges:
                 all_edges.extend(edges)
                 sources["terraform"] = len(edges)
+        except Exception:
+            pass
+
+    # Python imports
+    py_files = glob.glob(os.path.join(path, "**/*.py"), recursive=True)
+    # Filter out venv/node_modules/hidden dirs
+    py_files = [f for f in py_files if not any(
+        p in f for p in ["node_modules", ".venv", "venv", "__pycache__", ".git"]
+    )]
+    if py_files:
+        try:
+            edges = from_python_imports(path)
+            if edges:
+                all_edges.extend(edges)
+                sources["python-imports"] = len(edges)
+        except Exception:
+            pass
+
+    # package.json (monorepo workspaces)
+    root_pkg = os.path.join(path, "package.json")
+    if os.path.isfile(root_pkg):
+        try:
+            edges = from_package_json_workspaces(path)
+            if edges:
+                all_edges.extend(edges)
+                sources["package-json"] = len(edges)
         except Exception:
             pass
 

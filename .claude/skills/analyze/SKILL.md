@@ -10,11 +10,13 @@ Scan the current repository (or a given path) for infrastructure files, extract 
 
 ## Steps
 
-1. **Detect infrastructure files** in the repo. Look for:
+1. **Detect infrastructure and code files** in the repo. Look for:
    - `docker-compose.yml` / `docker-compose.yaml` / `compose.yml` / `compose.yaml`
    - Kubernetes YAML in `k8s/`, `kubernetes/`, `manifests/`, `deploy/`, or any directory with Service/Deployment resources
    - `.github/workflows/*.yml` (GitHub Actions)
    - `*.tf` files (Terraform)
+   - `*.py` files (Python module imports)
+   - `package.json` files (Node.js monorepo workspace dependencies)
 
 2. **Run the extract + encode script** using the Python snippet below. If the user provided a specific path as an argument, pass it to `from_directory()`. Otherwise use the current directory.
 
@@ -54,11 +56,13 @@ else:
 
 Replace `TARGET_PATH` with the user's argument or `"."` for current directory.
 
-If `se.extract.from_directory` finds nothing but the user pointed to a specific file, use the appropriate parser directly:
+If `se.extract.from_directory` finds nothing but the user pointed to a specific file or directory, use the appropriate parser directly:
 - `.yml`/`.yaml` with `services:` key → `se.extract.from_docker_compose(path)`
 - `.yml`/`.yaml` with `kind:` key → `se.extract.from_kubernetes(path)`
 - `.yml`/`.yaml` with `jobs:` key → `se.extract.from_github_actions(path)`
 - `.tf` files → `se.extract.from_terraform(path)`
+- Python directory → `se.extract.from_python_imports(path)`
+- `package.json` → `se.extract.from_package_json(path)` or `se.extract.from_package_json_workspaces(path)`
 
 ## Requirements
 

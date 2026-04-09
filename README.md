@@ -158,6 +158,12 @@ edges = se.extract.from_github_actions(".github/workflows")
 # From Terraform
 edges = se.extract.from_terraform("infra/")
 
+# From Python imports (module dependency graph)
+edges = se.extract.from_python_imports("src/")
+
+# From Node.js monorepo (inter-package dependencies)
+edges = se.extract.from_package_json_workspaces(".")
+
 # Auto-detect everything in a directory
 edges, sources = se.extract.from_directory(".")
 print(f"Found {len(edges)} edges from {sources}")
@@ -167,7 +173,7 @@ result = se.encode(edges)
 print(result.table)
 ```
 
-Requires `pyyaml`: `pip install pyyaml`
+Requires `pyyaml` for YAML parsing: `pip install pyyaml`
 
 ---
 
