@@ -160,7 +160,43 @@ Only nodes with structural changes appear. Unchanged nodes are omitted.
 
 ---
 
-## 7. Load from a JSON File
+## 7. Extract Edges Automatically
+
+Don't have an edge list? The `extract` module parses infrastructure and code files for you.
+
+```python
+import semanticembed as se
+
+# From your docker-compose.yml
+edges = se.extract.from_docker_compose("docker-compose.yml")
+result = se.encode(edges)
+
+# From Kubernetes manifests
+edges = se.extract.from_kubernetes("k8s/")
+
+# From your Python codebase (module import graph)
+edges = se.extract.from_python_imports("src/")
+
+# From a Node.js monorepo (inter-package deps)
+edges = se.extract.from_package_json_workspaces(".")
+
+# From GitHub Actions workflows
+edges = se.extract.from_github_actions(".github/workflows")
+
+# From Terraform
+edges = se.extract.from_terraform("infra/")
+
+# Or auto-detect everything in a directory
+edges, sources = se.extract.from_directory(".")
+print(f"Found {len(edges)} edges from {sources}")
+result = se.encode(edges)
+```
+
+Requires `pyyaml` for YAML parsing: `pip install pyyaml`
+
+---
+
+## 8. Load from a JSON File
 
 ```python
 from semanticembed import encode_file
@@ -181,7 +217,7 @@ JSON format:
 
 ---
 
-## 8. Free Tier Limits
+## 9. Free Tier Limits
 
 The free tier supports graphs up to **50 nodes** with no signup or API key.
 
@@ -213,7 +249,7 @@ Contact jeffmurr@seas.upenn.edu for license keys.
 
 ---
 
-## 9. Export Results
+## 10. Export Results
 
 ```python
 import json
@@ -244,5 +280,7 @@ for r in result.risks:
 | [04 - Bring Your Own](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/04_bring_your_own.ipynb) | JSON, OTel, Kubernetes imports |
 | [05 - AI Agents](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/05_ai_agent_pipelines.ipynb) | LLM pipeline risk analysis |
 | [06 - CI/CD Pipelines](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/06_cicd_pipelines.ipynb) | Build and data pipeline analysis |
+| [07 - OpenTelemetry](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/07_opentelemetry.ipynb) | Extract edges from OTel traces |
+| [08 - Qwen Compression](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/08_qwen_compression.ipynb) | Structural pruning for LLM speedup |
 
 See [API Reference](api_reference.md) for full function documentation.
