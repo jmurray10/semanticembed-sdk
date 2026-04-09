@@ -59,13 +59,40 @@ result = encode_file("my_graph.json")
 
 ---
 
+## Auto-Extract Edges
+
+The `extract` module parses common infrastructure and code files directly:
+
+```python
+import semanticembed as se
+
+edges = se.extract.from_docker_compose("docker-compose.yml")
+edges = se.extract.from_kubernetes("k8s/")
+edges = se.extract.from_github_actions(".github/workflows")
+edges = se.extract.from_terraform("infra/")
+edges = se.extract.from_python_imports("src/")
+edges = se.extract.from_package_json_workspaces(".")
+
+# Or auto-detect everything
+edges, sources = se.extract.from_directory(".")
+```
+
+Requires `pyyaml`: `pip install pyyaml`
+
+See [API Reference](api_reference.md#extract-module) for full details.
+
+---
+
 ## Common Data Sources
 
-| Source | How to get edges |
-|--------|-----------------|
-| **OpenTelemetry traces** | Parent-child span relationships |
-| **Kubernetes** | Service-to-service network policies or observed traffic |
-| **Istio / Envoy** | Service mesh call graph from proxy telemetry |
-| **Terraform** | Resource dependency graph |
-| **Static config** | Architecture diagram exported as edge list |
-| **API gateway logs** | Request routing paths |
+| Source | How to get edges | `extract` support |
+|--------|-----------------|-------------------|
+| **Docker Compose** | `depends_on`, `links` | `from_docker_compose()` |
+| **Kubernetes** | Service selectors, Ingress backends | `from_kubernetes()` |
+| **GitHub Actions** | Job `needs` fields | `from_github_actions()` |
+| **Terraform** | Resource cross-references | `from_terraform()` |
+| **Python codebase** | Module import graph | `from_python_imports()` |
+| **Node.js monorepo** | Inter-package dependencies | `from_package_json_workspaces()` |
+| **OpenTelemetry traces** | Parent-child span relationships | See [notebook 07](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/07_opentelemetry.ipynb) |
+| **Istio / Envoy** | Service mesh call graph | Extract from proxy telemetry |
+| **Static config** | Architecture diagram exported as edge list | Manual |

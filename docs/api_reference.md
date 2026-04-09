@@ -269,6 +269,98 @@ The canonical ordering of the six dimensions. Vectors in `result.vectors` follow
 
 ---
 
+## `extract` Module
+
+Extract edges from infrastructure and code files. Import as `se.extract` or `from semanticembed import extract`.
+
+Requires `pyyaml` for YAML parsing: `pip install pyyaml`
+
+### `extract.from_docker_compose(path="docker-compose.yml")`
+
+Parse `depends_on` and `links` from a Docker Compose file.
+
+**Returns:** `list[tuple[str, str]]`
+
+```python
+edges = se.extract.from_docker_compose("docker-compose.yml")
+```
+
+### `extract.from_kubernetes(path=".")`
+
+Parse Service/Deployment/Ingress selectors and env var references from Kubernetes YAML.
+
+**Parameters:** `path` — a YAML file or directory of YAML files.
+
+**Returns:** `list[tuple[str, str]]`
+
+```python
+edges = se.extract.from_kubernetes("k8s/")
+```
+
+### `extract.from_github_actions(path=".github/workflows")`
+
+Parse job `needs` fields from GitHub Actions workflow files.
+
+**Returns:** `list[tuple[str, str]]`
+
+```python
+edges = se.extract.from_github_actions()
+```
+
+### `extract.from_terraform(path=".")`
+
+Parse resource cross-references from `.tf` files.
+
+**Returns:** `list[tuple[str, str]]`
+
+```python
+edges = se.extract.from_terraform("infra/")
+```
+
+### `extract.from_python_imports(path=".")`
+
+Build a module dependency graph from Python import statements. Only includes edges between modules within the scanned directory.
+
+**Returns:** `list[tuple[str, str]]`
+
+```python
+edges = se.extract.from_python_imports("src/")
+```
+
+### `extract.from_package_json(path="package.json")`
+
+Parse `dependencies`, `devDependencies`, and `peerDependencies` from a single package.json.
+
+**Returns:** `list[tuple[str, str]]`
+
+```python
+edges = se.extract.from_package_json("package.json")
+```
+
+### `extract.from_package_json_workspaces(path=".")`
+
+Find inter-package dependency edges in a monorepo. Only includes edges between local workspace packages.
+
+**Returns:** `list[tuple[str, str]]`
+
+```python
+edges = se.extract.from_package_json_workspaces(".")
+```
+
+### `extract.from_directory(path=".")`
+
+Auto-detect and parse all recognized formats in a directory.
+
+**Returns:** `tuple[list[tuple[str, str]], dict[str, int]]` — edges and a dict mapping source format to edge count.
+
+```python
+edges, sources = se.extract.from_directory(".")
+print(f"Found {len(edges)} edges from {sources}")
+# Found 23 edges from {'docker-compose': 8, 'python-imports': 15}
+```
+
+---
+
 ## Edge Input Formats
 
 All three formats are accepted and can be mixed:
