@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .client import encode, encode_file, report, drift
+from .client import encode, encode_file, report, drift, encode_diff
 from .models import SemanticResult, RiskReport, RiskEntry, DIMENSION_NAMES
 from .exceptions import (
     SemanticEmbedError,
@@ -23,6 +23,7 @@ license_key: str | None = None
 __all__ = [
     "encode",
     "encode_file",
+    "encode_diff",
     "report",
     "drift",
     "extract",

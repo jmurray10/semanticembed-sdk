@@ -102,7 +102,7 @@ def encode(
     *,
     license_key: str | None = None,
     api_url: str | None = None,
-    timeout: float = 30.0,
+    timeout: float = 60.0,
 ) -> SemanticResult:
     """Encode a directed graph and return 6D structural coordinates.
 
@@ -133,6 +133,16 @@ def encode(
     for e in normalized:
         node_set.add(e[0])
         node_set.add(e[1])
+
+    # Warn when approaching free tier limit
+    n_nodes = len(node_set)
+    if not key and n_nodes > FREE_TIER_LIMIT * 0.8:
+        import warnings
+        warnings.warn(
+            f"Graph has {n_nodes}/{FREE_TIER_LIMIT} free tier nodes. "
+            f"Set a license key to avoid hitting the limit.",
+            stacklevel=2,
+        )
 
     payload = {"edges": normalized}
 
@@ -212,19 +222,23 @@ def encode_file(
 def drift(
     before: SemanticResult,
     after: SemanticResult,
-) -> dict[str, dict[str, float]]:
+    *,
+    detail: bool = False,
+) -> dict[str, dict[str, float | dict[str, float]]]:
     """Compare two encoding results and return per-node, per-dimension deltas.
 
     Args:
         before: Encoding result from the earlier version.
         after: Encoding result from the later version.
+        detail: If True, return {"before": x, "after": y, "delta": d} per
+            dimension instead of just the delta float.
 
     Returns:
-        Dict mapping node names to dicts of dimension deltas.
-        Positive values mean the dimension increased.
+        Dict mapping node names to dicts of dimension changes.
+        Only nodes with changes are included.
     """
     all_nodes = set(before.vectors.keys()) | set(after.vectors.keys())
-    changes: dict[str, dict[str, float]] = {}
+    changes: dict[str, dict] = {}
 
     for node in sorted(all_nodes):
         v_before = before.vectors.get(node, [0.0] * 6)
@@ -233,8 +247,46 @@ def drift(
         for i, dim in enumerate(DIMENSION_NAMES):
             delta = v_after[i] - v_before[i]
             if abs(delta) > 1e-6:
-                deltas[dim] = round(delta, 4)
+                if detail:
+                    deltas[dim] = {
+                        "before": round(v_before[i], 4),
+                        "after": round(v_after[i], 4),
+                        "delta": round(delta, 4),
+                    }
+                else:
+                    deltas[dim] = round(delta, 4)
         if deltas:
             changes[node] = deltas
 
     return changes
+
+
+def encode_diff(
+    edges_before: list,
+    edges_after: list,
+    *,
+    detail: bool = True,
+    license_key: str | None = None,
+    api_url: str | None = None,
+    timeout: float = 60.0,
+) -> dict[str, dict[str, dict[str, float]]]:
+    """Encode two edge lists and return structural drift in one call.
+
+    Convenience function that combines encode() + encode() + drift().
+
+    Args:
+        edges_before: Edge list for the earlier version.
+        edges_after: Edge list for the later version.
+        detail: If True (default), return before/after/delta per dimension.
+        license_key: Optional API key.
+        api_url: Override the API endpoint.
+        timeout: Request timeout per encode call.
+
+    Returns:
+        Dict mapping node names to dimension changes.
+    """
+    result_before = encode(edges_before, license_key=license_key,
+                           api_url=api_url, timeout=timeout)
+    result_after = encode(edges_after, license_key=license_key,
+                          api_url=api_url, timeout=timeout)
+    return drift(result_before, result_after, detail=detail)
