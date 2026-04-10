@@ -26,27 +26,54 @@ The 6D encoding is deterministic and proprietary (runs server-side). The LLM onl
 
 ## Install
 
+Two agent options — pick your LLM provider:
+
+### Claude Agent (Anthropic)
+
 ```bash
 pip install semanticembed claude-agent-sdk pyyaml
+export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-Set your Anthropic API key:
+### Gemini Agent (Google)
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
+pip install semanticembed google-genai pyyaml
+export GOOGLE_API_KEY=...
 ```
 
 ## Usage
 
-### Interactive mode (recommended)
+### Claude Agent
 
 ```bash
-# Analyze current directory
+# Interactive — scans your project, explains risks, answers questions
 python -m agent
 
 # Analyze a specific project
 python -m agent /path/to/project
+
+# Single question
+python -m agent --ask "What is my biggest single point of failure?"
 ```
+
+### Gemini Agent
+
+```bash
+# Interactive
+python -m agent.gemini_agent
+
+# Analyze a specific project
+python -m agent.gemini_agent /path/to/project
+
+# Single question
+python -m agent.gemini_agent --ask "What happens if the database goes down?"
+
+# Use a different Gemini model
+python -m agent.gemini_agent --model gemini-2.5-pro
+```
+
+Both agents have the same 7 tools and produce equivalent results — just different LLM backends.
 
 The agent will:
 1. Scan for infrastructure files
@@ -54,13 +81,6 @@ The agent will:
 3. Encode the graph
 4. Present a structural risk summary
 5. Wait for your questions
-
-### Single question mode
-
-```bash
-python -m agent --ask "What is my biggest single point of failure?"
-python -m agent /path/to/project --ask "What happens if the database goes down?"
-```
 
 ## What the Agent Can Do
 
