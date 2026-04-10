@@ -12,6 +12,7 @@ from .exceptions import (
     SemanticConnectionError,
 )
 from . import extract
+from .explain import explain, ask
 
 __version__ = "0.1.0"
 
@@ -26,6 +27,8 @@ __all__ = [
     "encode_diff",
     "report",
     "drift",
+    "explain",
+    "ask",
     "extract",
     "SemanticResult",
     "RiskReport",
