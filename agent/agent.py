@@ -276,7 +276,7 @@ async def run_agent(prompt: str, path: str = "."):
     server = create_server()
 
     options = ClaudeAgentOptions(
-        model="claude-sonnet-4-5-20250514",
+        model="sonnet",
         system_prompt=AGENT_SYSTEM,
         mcp_servers={"semanticembed": server},
         allowed_tools=["mcp__semanticembed__*"],
@@ -286,7 +286,7 @@ async def run_agent(prompt: str, path: str = "."):
 
     async for message in query(prompt=full_prompt, options=options):
         if isinstance(message, ResultMessage) and message.subtype == "success":
-            print(message.result)
+            print(message.result.encode("utf-8", errors="replace").decode("utf-8"))
 
 
 async def interactive(path: str = "."):
@@ -294,7 +294,7 @@ async def interactive(path: str = "."):
     server = create_server()
 
     options = ClaudeAgentOptions(
-        model="claude-sonnet-4-5-20250514",
+        model="sonnet",
         system_prompt=AGENT_SYSTEM,
         mcp_servers={"semanticembed": server},
         allowed_tools=["mcp__semanticembed__*"],
@@ -304,6 +304,9 @@ async def interactive(path: str = "."):
     print("=" * 40)
     print(f"Scanning: {path}")
     print("Type 'quit' to exit.\n")
+
+    def _print_safe(text: str) -> None:
+        print(text.encode("utf-8", errors="replace").decode("utf-8"))
 
     # Initial scan
     initial_prompt = (
@@ -316,7 +319,7 @@ async def interactive(path: str = "."):
 
     async for message in query(prompt=initial_prompt, options=options):
         if isinstance(message, ResultMessage) and message.subtype == "success":
-            print(message.result)
+            _print_safe(message.result)
 
     # Follow-up loop
     while True:
@@ -334,7 +337,7 @@ async def interactive(path: str = "."):
             options=options,
         ):
             if isinstance(message, ResultMessage) and message.subtype == "success":
-                print(message.result)
+                _print_safe(message.result)
 
 
 def main():
