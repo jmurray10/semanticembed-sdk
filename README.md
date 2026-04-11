@@ -177,6 +177,65 @@ Requires `pyyaml` for YAML parsing: `pip install pyyaml`
 
 ---
 
+## LLM-Powered Analysis
+
+Get plain-language explanations and actionable recommendations using your own LLM key.
+
+```python
+import semanticembed as se
+
+result = se.encode(edges)
+
+# One-shot analysis (OpenAI, Anthropic, or local Ollama)
+print(se.explain(result, model="gpt-4o-mini", api_key="sk-..."))
+print(se.explain(result, model="claude-sonnet-4-5", api_key="sk-ant-..."))
+print(se.explain(result, model="ollama/llama3"))  # local, no key needed
+
+# Follow-up questions
+answer = se.ask(result, "What happens if the database goes down?",
+                model="gpt-4o-mini", api_key="sk-...")
+```
+
+The LLM sees only the encoding output (6D vectors, risk report) -- never the algorithm.
+
+---
+
+## Structural Diff
+
+Compare two graph versions in one call:
+
+```python
+changes = se.encode_diff(edges_v1, edges_v2)
+for node, deltas in changes.items():
+    for dim, info in deltas.items():
+        print(f"{node}.{dim}: {info['before']:.3f} -> {info['after']:.3f}")
+```
+
+---
+
+## Agent
+
+An autonomous agent that scans your repo, extracts edges, encodes, and explains results interactively. Choose your LLM backend:
+
+```bash
+# Claude agent
+pip install claude-agent-sdk
+export ANTHROPIC_API_KEY=sk-ant-...
+python -m agent
+
+# Gemini agent
+pip install google-genai
+export GOOGLE_API_KEY=...
+python -m agent.gemini_agent
+
+# Single question
+python -m agent --ask "What is my biggest SPOF?"
+```
+
+The agent has 7 tools: scan, extract (docker-compose, k8s, Python imports), encode, diff, and simulate architecture changes. See [agent/README.md](agent/README.md) for full docs.
+
+---
+
 ## Example Graphs
 
 The `examples/` directory contains edge lists for well-known architectures:
