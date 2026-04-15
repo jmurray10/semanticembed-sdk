@@ -30,7 +30,6 @@ dependencies = [
 
 [project.optional-dependencies]
 extract = ["pyyaml>=6.0"]
-llm = ["httpx>=0.24"]
 agent-claude = ["claude-agent-sdk", "pyyaml>=6.0"]
 agent-gemini = ["google-genai", "pyyaml>=6.0"]
 all = ["pyyaml>=6.0", "claude-agent-sdk", "google-genai"]

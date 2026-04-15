@@ -192,7 +192,7 @@ def encode_file(
     *,
     license_key: str | None = None,
     api_url: str | None = None,
-    timeout: float = 30.0,
+    timeout: float = 60.0,
 ) -> SemanticResult:
     """Encode a graph from a JSON file.
 

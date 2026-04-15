@@ -6,7 +6,7 @@ Complete reference for the `semanticembed` Python SDK.
 
 ## Functions
 
-### `encode(edges, *, license_key=None, api_url=None, timeout=30.0)`
+### `encode(edges, *, license_key=None, api_url=None, timeout=60.0)`
 
 Encode a directed graph and return 6D structural coordinates.
 
