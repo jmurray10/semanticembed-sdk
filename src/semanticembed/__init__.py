@@ -14,7 +14,7 @@ from .exceptions import (
 from . import extract
 from .explain import explain, ask
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 # Set this to your license key to unlock unlimited nodes:
 #   import semanticembed
