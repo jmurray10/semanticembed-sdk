@@ -301,21 +301,22 @@ for node, deltas in changes.items():
 An autonomous agent that scans your repo, extracts edges, encodes, and explains results interactively. Choose your LLM backend:
 
 ```bash
-# Claude agent
-pip install claude-agent-sdk
+# Claude agent (installs the agent code + the Anthropic agent SDK)
+pip install 'semanticembed[agent-claude]'
 export ANTHROPIC_API_KEY=sk-ant-...
-python -m agent
+semanticembed-agent              # interactive
+semanticembed-agent --ask "What is my biggest SPOF?"
 
 # Gemini agent
-pip install google-genai
+pip install 'semanticembed[agent-gemini]'
 export GOOGLE_API_KEY=...
-python -m agent.gemini_agent
-
-# Single question
-python -m agent --ask "What is my biggest SPOF?"
+semanticembed-gemini-agent
 ```
 
-The agent has 7 tools: scan, extract (docker-compose, k8s, Python imports), encode, diff, and simulate architecture changes. See [agent/README.md](agent/README.md) for full docs.
+Both binaries are also reachable as `python -m semanticembed.agent` /
+`python -m semanticembed.agent.gemini_agent`.
+
+The agent has 7 tools: scan, extract (docker-compose, k8s, Python imports), encode, diff, and simulate architecture changes. See [src/semanticembed/agent/README.md](src/semanticembed/agent/README.md) for full docs.
 
 ### What gets sent where
 

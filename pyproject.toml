@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "semanticembed"
-version = "0.5.0"
+version = "0.5.1"
 description = "6D structural intelligence for directed graphs. Six numbers per node. Sub-millisecond."
 readme = "README.md"
 license = {text = "Proprietary"}
@@ -39,6 +39,10 @@ dev = ["pytest>=7", "respx>=0.20", "pyyaml>=6.0"]
 Homepage = "https://github.com/jmurray10/semanticembed-sdk"
 Documentation = "https://github.com/jmurray10/semanticembed-sdk"
 Repository = "https://github.com/jmurray10/semanticembed-sdk"
+
+[project.scripts]
+semanticembed-agent = "semanticembed.agent.agent:main"
+semanticembed-gemini-agent = "semanticembed.agent.gemini_agent:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/semanticembed"]
