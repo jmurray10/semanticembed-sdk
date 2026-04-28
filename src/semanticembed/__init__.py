@@ -15,7 +15,7 @@ from . import extract
 from .explain import explain, ask
 from .find_edges import find_edges
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 
 # Set this to your license key to unlock unlimited nodes:
 #   import semanticembed
