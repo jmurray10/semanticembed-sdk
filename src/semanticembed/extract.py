@@ -555,6 +555,273 @@ def from_package_json_workspaces(path: str = ".") -> list[tuple[str, str]]:
 
 
 # ---------------------------------------------------------------------------
+# Infrastructure-as-code: CloudFormation, AWS CDK (Python), Pulumi (Python)
+# ---------------------------------------------------------------------------
+
+
+def from_cloudformation(path: str) -> list[tuple[str, str]]:
+    """Extract resource dependency edges from a CloudFormation template.
+
+    Edges represent dependency: a resource's ``DependsOn`` list AND any
+    intrinsic references (``Ref``, ``Fn::GetAtt``, ``Fn::Sub``) inside its
+    Properties produce a ``this_resource -> referenced_resource`` edge.
+
+    Accepts either YAML (``.yaml`` / ``.yml``) or JSON templates. Pass a
+    directory to merge edges across all templates within it.
+
+    Args:
+        path: Path to a single template OR a directory of templates.
+
+    Returns:
+        Deduped list of ``(dependent, dependency)`` edges.
+
+    Example::
+
+        edges = se.extract.from_cloudformation("infra/")
+        result = se.encode(edges)
+    """
+    files: list[str] = []
+    if os.path.isdir(path):
+        for ext in ("*.yaml", "*.yml", "*.json", "*.template"):
+            files.extend(glob.glob(os.path.join(path, "**", ext), recursive=True))
+    elif os.path.isfile(path):
+        files = [path]
+
+    edges: list[tuple[str, str]] = []
+    for fp in files:
+        try:
+            doc = _load_cfn_doc(fp)
+        except Exception:
+            continue
+        if not isinstance(doc, dict):
+            continue
+        resources = doc.get("Resources") or doc.get("resources")
+        if not isinstance(resources, dict):
+            continue
+        for res_name, res_config in resources.items():
+            if not isinstance(res_config, dict):
+                continue
+            # Explicit DependsOn
+            dep = res_config.get("DependsOn") or res_config.get("dependsOn")
+            if isinstance(dep, str):
+                edges.append((res_name, dep))
+            elif isinstance(dep, list):
+                for d in dep:
+                    if isinstance(d, str):
+                        edges.append((res_name, d))
+            # Implicit references inside Properties
+            props = res_config.get("Properties") or res_config.get("properties") or {}
+            for ref in _cfn_walk_refs(props, set(resources.keys())):
+                if ref != res_name:
+                    edges.append((res_name, ref))
+
+    return _dedupe(edges)
+
+
+def _load_cfn_doc(path: str):
+    """Load a CFN template — JSON if .json, else YAML (with intrinsic-tag support)."""
+    if path.endswith(".json"):
+        import json
+        with open(path) as f:
+            return json.load(f)
+    try:
+        import yaml
+    except ImportError:
+        raise ImportError("PyYAML is required to parse CloudFormation templates.")
+
+    # CFN YAML uses short intrinsic tags like `!Ref` and `!GetAtt`. The default
+    # SafeLoader chokes on these; we register no-op constructors that yield a
+    # tagged dict so the walker can detect them.
+    class _CfnLoader(yaml.SafeLoader):
+        pass
+
+    def _intrinsic_constructor(tag):
+        def _ctor(loader, node):
+            if isinstance(node, yaml.ScalarNode):
+                return {tag: loader.construct_scalar(node)}
+            if isinstance(node, yaml.SequenceNode):
+                return {tag: loader.construct_sequence(node, deep=True)}
+            if isinstance(node, yaml.MappingNode):
+                return {tag: loader.construct_mapping(node, deep=True)}
+            return None
+        return _ctor
+
+    for short in ("Ref", "GetAtt", "Sub", "Join", "Select", "Split",
+                  "FindInMap", "ImportValue", "If", "And", "Or", "Not", "Equals",
+                  "Base64", "Cidr", "Transform", "Condition"):
+        _CfnLoader.add_constructor(f"!{short}", _intrinsic_constructor(f"Fn::{short}"))
+    _CfnLoader.add_constructor("!Ref", _intrinsic_constructor("Ref"))
+
+    with open(path) as f:
+        return yaml.load(f, Loader=_CfnLoader)
+
+
+def _cfn_walk_refs(obj, valid_names: set[str]) -> set[str]:
+    """Walk a Properties object and collect resource names referenced via
+    Ref / Fn::GetAtt / Fn::Sub. Only names that exist as Resources in the
+    template are returned."""
+    found: set[str] = set()
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k == "Ref" and isinstance(v, str) and v in valid_names:
+                found.add(v)
+            elif k == "Fn::GetAtt":
+                # Ref form: ["LogicalName", "Attribute"] OR "LogicalName.Attribute"
+                if isinstance(v, list) and v and isinstance(v[0], str):
+                    if v[0] in valid_names:
+                        found.add(v[0])
+                elif isinstance(v, str):
+                    name = v.split(".")[0]
+                    if name in valid_names:
+                        found.add(name)
+            elif k == "Fn::Sub":
+                # `${LogicalName}` or `${LogicalName.Attribute}`
+                template = v[0] if isinstance(v, list) and v else v
+                if isinstance(template, str):
+                    found.update(_extract_sub_refs(template, valid_names))
+            else:
+                found.update(_cfn_walk_refs(v, valid_names))
+    elif isinstance(obj, list):
+        for item in obj:
+            found.update(_cfn_walk_refs(item, valid_names))
+    return found
+
+
+def _extract_sub_refs(template: str, valid_names: set[str]) -> set[str]:
+    """Pull `${Foo}` / `${Foo.Bar}` references out of a Fn::Sub string."""
+    out: set[str] = set()
+    for m in re.finditer(r"\$\{([A-Za-z][A-Za-z0-9]*)(?:\.[A-Za-z0-9]+)?\}", template):
+        name = m.group(1)
+        if name in valid_names:
+            out.add(name)
+    return out
+
+
+def from_aws_cdk(path: str) -> list[tuple[str, str]]:
+    """Extract construct dependency edges from an AWS CDK Python file.
+
+    Recognizes common patterns where a construct receives other constructs
+    via keyword arguments:
+
+    - ``fn = aws_lambda.Function(self, "Fn", role=my_role, vpc=my_vpc)``
+        emits ``fn -> my_role`` and ``fn -> my_vpc``.
+    - Any kwarg whose value is a Name/Attribute referring to a previously
+      assigned construct variable produces an edge.
+
+    TypeScript CDK is not supported in this release.
+
+    Args:
+        path: Path to a Python CDK app file.
+
+    Returns:
+        Deduped list of ``(construct, dependency)`` edges.
+    """
+    return _python_resource_graph(path, _looks_like_cdk_call)
+
+
+def from_pulumi(path: str) -> list[tuple[str, str]]:
+    """Extract resource dependency edges from a Pulumi Python program.
+
+    Pulumi resource constructors look like CDK constructs but with the
+    resource name (a string) as the first positional arg:
+
+    - ``bucket = aws.s3.Bucket("my-bucket", website=site_cfg)``
+        emits ``bucket -> site_cfg``.
+
+    The same kwarg-reference rule applies: any kwarg whose value resolves
+    to a previously assigned variable becomes an edge.
+
+    Args:
+        path: Path to a Pulumi Python file (typically ``__main__.py``).
+
+    Returns:
+        Deduped list of edges.
+    """
+    return _python_resource_graph(path, _looks_like_pulumi_call)
+
+
+def _python_resource_graph(
+    path: str,
+    is_resource_call,
+) -> list[tuple[str, str]]:
+    """Shared helper for CDK / Pulumi Python parsing.
+
+    Walks the AST collecting `var = <some_module>.<Class>(...)` assignments
+    where the call shape matches `is_resource_call`. For each such call,
+    every kwarg whose value is a Name/Attribute pointing to another
+    construct variable becomes an edge `var -> referenced_var`.
+    """
+    with open(path, encoding="utf-8") as f:
+        tree = ast.parse(f.read(), filename=path)
+
+    # Pass 1: collect variable names assigned from a "resource-shaped" call
+    construct_vars: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name) or not isinstance(node.value, ast.Call):
+            continue
+        if is_resource_call(node.value):
+            construct_vars.add(target.id)
+
+    # Pass 2: emit edges from each construct call's kwargs
+    edges: list[tuple[str, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name) or not isinstance(node.value, ast.Call):
+            continue
+        call = node.value
+        if not is_resource_call(call):
+            continue
+        var_name = target.id
+        for kw in call.keywords:
+            if not kw.arg:
+                continue
+            ref = _ast_str_arg(kw.value)
+            if ref and ref in construct_vars and ref != var_name:
+                edges.append((var_name, ref))
+            # Also handle list/tuple of construct refs
+            if isinstance(kw.value, (ast.List, ast.Tuple)):
+                for elt in kw.value.elts:
+                    ref2 = _ast_str_arg(elt)
+                    if ref2 and ref2 in construct_vars and ref2 != var_name:
+                        edges.append((var_name, ref2))
+
+    return _dedupe(edges)
+
+
+def _looks_like_cdk_call(call: ast.Call) -> bool:
+    """Heuristic: AWS CDK constructs are called with `(scope, id, **kwargs)`.
+
+    Match `Module.Class(self, "...", ...)` or `aws_xxx.Klass(scope, "...", ...)`
+    where the second arg is a string (the construct id).
+    """
+    if not isinstance(call.func, ast.Attribute):
+        return False
+    if len(call.args) < 2:
+        return False
+    second = call.args[1]
+    return isinstance(second, ast.Constant) and isinstance(second.value, str)
+
+
+def _looks_like_pulumi_call(call: ast.Call) -> bool:
+    """Heuristic: Pulumi resources are called with `("name", **kwargs)`.
+
+    Match `Module.Class("name", ...)` or `aws.s3.Bucket("name", ...)` where
+    the FIRST positional arg is a string literal.
+    """
+    if not isinstance(call.func, ast.Attribute):
+        return False
+    if not call.args:
+        return False
+    first = call.args[0]
+    return isinstance(first, ast.Constant) and isinstance(first.value, str)
+
+
+# ---------------------------------------------------------------------------
 # OpenTelemetry traces (OTLP / Jaeger / Zipkin)
 # ---------------------------------------------------------------------------
 
@@ -1097,13 +1364,15 @@ def from_directory(path: str = ".") -> tuple[list[tuple[str, str]], dict[str, in
             except Exception:
                 pass
 
-    # AI agent frameworks — for each file that imports a known framework,
-    # run the matching parser on JUST that file (cheaper + more accurate
-    # than walking every Python file).
-    ai_specs = (
-        ("langgraph",   ("langgraph",),                 from_langgraph),
-        ("crewai",      ("crewai",),                    from_crewai),
+    # AI agent frameworks + AWS CDK + Pulumi — for each file that imports a
+    # known framework, run the matching parser on JUST that file (cheaper +
+    # more accurate than walking every Python file).
+    py_specs = (
+        ("langgraph",   ("langgraph",),                          from_langgraph),
+        ("crewai",      ("crewai",),                             from_crewai),
         ("autogen",     ("autogen", "autogen_agentchat", "ag2"), from_autogen),
+        ("aws-cdk",     ("aws_cdk", "aws_cdk_lib"),              from_aws_cdk),
+        ("pulumi",      ("pulumi",),                             from_pulumi),
     )
     py_files = glob.glob(os.path.join(path, "**/*.py"), recursive=True)
     py_files = [f for f in py_files if not any(
@@ -1114,7 +1383,7 @@ def from_directory(path: str = ".") -> tuple[list[tuple[str, str]], dict[str, in
             head = open(fpath, encoding="utf-8", errors="replace").read(4096)
         except OSError:
             continue
-        for label, prefixes, parser in ai_specs:
+        for label, prefixes, parser in py_specs:
             if not any(f"import {p}" in head or f"from {p}" in head for p in prefixes):
                 continue
             try:
@@ -1124,6 +1393,38 @@ def from_directory(path: str = ".") -> tuple[list[tuple[str, str]], dict[str, in
                     sources[label] = sources.get(label, 0) + len(edges)
             except Exception:
                 pass
+
+    # CloudFormation — pick up *.yaml / *.yml at root or under cloudformation/
+    # / templates/. Detection is cheap (the file must contain "Resources:" near
+    # the top to be considered).
+    cfn_dirs = [path] + [
+        os.path.join(path, d) for d in ("cloudformation", "templates", "cfn")
+        if os.path.isdir(os.path.join(path, d))
+    ]
+    seen_cfn: set[str] = set()
+    for d in cfn_dirs:
+        if not os.path.isdir(d):
+            continue
+        for ext in ("*.yaml", "*.yml", "*.json", "*.template"):
+            for fp in glob.glob(os.path.join(d, ext)):
+                if fp in seen_cfn:
+                    continue
+                seen_cfn.add(fp)
+                try:
+                    with open(fp, encoding="utf-8", errors="replace") as fh:
+                        head = fh.read(2048)
+                except OSError:
+                    continue
+                # Cheap heuristic to skip non-CFN YAML/JSON
+                if "AWSTemplateFormatVersion" not in head and '"Resources"' not in head and "\nResources:" not in head:
+                    continue
+                try:
+                    edges = from_cloudformation(fp)
+                    if edges:
+                        all_edges.extend(edges)
+                        sources["cloudformation"] = sources.get("cloudformation", 0) + len(edges)
+                except Exception:
+                    pass
 
     return _dedupe(all_edges), sources
 

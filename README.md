@@ -158,6 +158,15 @@ edges = se.extract.from_github_actions(".github/workflows")
 # From Terraform
 edges = se.extract.from_terraform("infra/")
 
+# From CloudFormation (YAML or JSON)
+edges = se.extract.from_cloudformation("template.yaml")
+
+# From AWS CDK (Python)
+edges = se.extract.from_aws_cdk("app.py")
+
+# From Pulumi (Python)
+edges = se.extract.from_pulumi("__main__.py")
+
 # From Python imports (module dependency graph)
 edges = se.extract.from_python_imports("src/")
 
