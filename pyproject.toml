@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "semanticembed"
-version = "0.2.1"
+version = "0.2.2"
 description = "6D structural intelligence for directed graphs. Six numbers per node. Sub-millisecond."
 readme = "README.md"
 license = {text = "Proprietary"}
@@ -33,6 +33,7 @@ extract = ["pyyaml>=6.0"]
 agent-claude = ["claude-agent-sdk", "pyyaml>=6.0"]
 agent-gemini = ["google-genai", "pyyaml>=6.0"]
 all = ["pyyaml>=6.0", "claude-agent-sdk", "google-genai"]
+dev = ["pytest>=7", "respx>=0.20", "pyyaml>=6.0"]
 
 [project.urls]
 Homepage = "https://github.com/jmurray10/semanticembed-sdk"
@@ -41,3 +42,9 @@ Repository = "https://github.com/jmurray10/semanticembed-sdk"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/semanticembed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]

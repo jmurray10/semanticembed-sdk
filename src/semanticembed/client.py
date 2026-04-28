@@ -97,6 +97,42 @@ def _parse_response(data: dict, elapsed_ms: float) -> SemanticResult:
     )
 
 
+_RETRYABLE_STATUS = {502, 503, 504}
+_RETRY_BACKOFF_SECONDS = 0.5
+
+
+def _post_with_retry(
+    url: str,
+    headers: dict[str, str],
+    payload: dict,
+    timeout: float,
+) -> httpx.Response:
+    """POST with one retry on transient failures (connection error, read timeout, 5xx)."""
+    last_exc: Exception | None = None
+    for attempt in range(2):
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                resp = client.post(f"{url}/api/v1/encode", headers=headers, json=payload)
+            if resp.status_code in _RETRYABLE_STATUS and attempt == 0:
+                time.sleep(_RETRY_BACKOFF_SECONDS)
+                continue
+            return resp
+        except (httpx.ConnectError, httpx.ReadTimeout) as e:
+            last_exc = e
+            if attempt == 0:
+                time.sleep(_RETRY_BACKOFF_SECONDS)
+                continue
+            raise SemanticConnectionError(
+                f"Could not connect to SemanticEmbed API at {url} after retry: {e}"
+            ) from e
+    # Loop exited without returning (exhausted retries on 5xx).
+    if last_exc is not None:
+        raise SemanticConnectionError(
+            f"Could not connect to SemanticEmbed API at {url}: {last_exc}"
+        ) from last_exc
+    return resp  # last 5xx response
+
+
 def encode(
     edges: list,
     *,
@@ -134,8 +170,11 @@ def encode(
         node_set.add(e[0])
         node_set.add(e[1])
 
-    # Warn when approaching free tier limit
+    # Pre-flight free-tier guard: avoid a round trip when we already know it'll 403.
     n_nodes = len(node_set)
+    if not key and n_nodes > FREE_TIER_LIMIT:
+        raise NodeLimitError(n_nodes, FREE_TIER_LIMIT)
+
     if not key and n_nodes > FREE_TIER_LIMIT * 0.8:
         import warnings
         warnings.warn(
@@ -147,11 +186,7 @@ def encode(
     payload = {"edges": normalized}
 
     start = time.perf_counter()
-    try:
-        with httpx.Client(timeout=timeout) as client:
-            resp = client.post(f"{url}/api/v1/encode", headers=headers, json=payload)
-    except httpx.ConnectError as e:
-        raise SemanticConnectionError(f"Could not connect to SemanticEmbed API at {url}: {e}") from e
+    resp = _post_with_retry(url, headers, payload, timeout)
     elapsed_ms = (time.perf_counter() - start) * 1000
 
     if resp.status_code == 401:

@@ -234,6 +234,17 @@ python -m agent --ask "What is my biggest SPOF?"
 
 The agent has 7 tools: scan, extract (docker-compose, k8s, Python imports), encode, diff, and simulate architecture changes. See [agent/README.md](agent/README.md) for full docs.
 
+### What gets sent where
+
+Be explicit about data egress before pointing the agent at private architecture:
+
+- **Claude agent** (`python -m agent`): the LLM reads tool outputs as conversation context, so the contents of `docker-compose.yml`, Kubernetes manifests, Terraform `.tf` files, Python source, and `package.json` files in your project go to **Anthropic's API** along with your prompts. Conversation history is governed by Anthropic's data-use policies.
+- **Gemini agent** (`python -m agent.gemini_agent`): same data flow, sent to **Google's API** instead.
+- **Skill** (`skill/analyze.py`): runs **Ollama on your machine**. Raw input never leaves localhost unless you set `SEMBED_OLLAMA_URL` to a remote host.
+- **Cloud `encode()` call**: only the **edge list** (node names, e.g. `["frontend", "auth"]`) goes to the SemanticEmbed Railway endpoint. File contents are never sent.
+
+If your topology is sensitive, prefer the skill (local Ollama) or pre-extract edges deterministically with `se.extract.from_directory()` and call `se.encode()` directly — that path sends only the edge list.
+
 ---
 
 ## Example Graphs

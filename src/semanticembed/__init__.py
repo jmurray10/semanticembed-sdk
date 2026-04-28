@@ -13,8 +13,9 @@ from .exceptions import (
 )
 from . import extract
 from .explain import explain, ask
+from .find_edges import find_edges
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 # Set this to your license key to unlock unlimited nodes:
 #   import semanticembed
@@ -30,6 +31,7 @@ __all__ = [
     "explain",
     "ask",
     "extract",
+    "find_edges",
     "SemanticResult",
     "RiskReport",
     "RiskEntry",

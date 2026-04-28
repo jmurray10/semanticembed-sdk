@@ -1,0 +1,14 @@
+{
+  "name": "Sample Pipeline",
+  "description": "Minimal 7-node pipeline used as the default starter example in notebook 04. Replace the edges with your own architecture to try the SDK on a real graph.",
+  "edges": [
+    {"source": "frontend", "target": "auth"},
+    {"source": "frontend", "target": "catalog"},
+    {"source": "frontend", "target": "checkout"},
+    {"source": "auth", "target": "db"},
+    {"source": "catalog", "target": "db"},
+    {"source": "checkout", "target": "payments"},
+    {"source": "checkout", "target": "db"},
+    {"source": "payments", "target": "stripe"}
+  ]
+}
