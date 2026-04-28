@@ -57,6 +57,43 @@ class TestFromDirectory:
         assert sources == {}
 
 
+class TestPythonImportsDepth:
+    def _make_repo(self, tmp_path):
+        """services/auth/{__init__,user}.py + services/payments/{__init__,gateway}.py"""
+        (tmp_path / "services" / "auth").mkdir(parents=True)
+        (tmp_path / "services" / "payments").mkdir(parents=True)
+        (tmp_path / "services" / "__init__.py").write_text("")
+        (tmp_path / "services" / "auth" / "__init__.py").write_text("")
+        (tmp_path / "services" / "auth" / "user.py").write_text(
+            "from services.payments.gateway import charge\n"
+        )
+        (tmp_path / "services" / "payments" / "__init__.py").write_text("")
+        (tmp_path / "services" / "payments" / "gateway.py").write_text("def charge(): pass\n")
+        return tmp_path
+
+    def test_default_uses_short_names(self, tmp_path):
+        from semanticembed import extract
+        self._make_repo(tmp_path)
+        edges = extract.from_python_imports(str(tmp_path))
+        edges_set = {tuple(e) for e in edges}
+        assert ("user", "gateway") in edges_set
+
+    def test_depth_1_rolls_to_top_level(self, tmp_path):
+        from semanticembed import extract
+        # Single top-level package -> all internal edges are self-loops -> dropped.
+        self._make_repo(tmp_path)
+        edges = extract.from_python_imports(str(tmp_path), depth=1)
+        # All edges within `services` -> services -> services -> dropped as self-loop.
+        assert edges == []
+
+    def test_depth_2_groups_at_service_boundary(self, tmp_path):
+        from semanticembed import extract
+        self._make_repo(tmp_path)
+        edges = extract.from_python_imports(str(tmp_path), depth=2)
+        edges_set = {tuple(e) for e in edges}
+        assert ("services.auth", "services.payments") in edges_set
+
+
 class TestFindEdges:
     def test_deterministic_path_skips_llm(self, tmp_path):
         from semanticembed import find_edges

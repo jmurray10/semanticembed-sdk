@@ -171,6 +171,61 @@ class TestRetry:
         assert route.call_count == 2
 
 
+class TestEncodeCache:
+    def setup_method(self):
+        se.clear_encode_cache()
+
+    @respx.mock
+    def test_cache_disabled_by_default(self):
+        route = respx.post(f"{DEFAULT_API_URL}/api/v1/encode").mock(
+            return_value=httpx.Response(200, json=VALID_BODY)
+        )
+        se.encode(SAMPLE_EDGES)
+        se.encode(SAMPLE_EDGES)
+        # No cache -> two HTTP calls.
+        assert route.call_count == 2
+
+    @respx.mock
+    def test_cache_hit_skips_http(self):
+        route = respx.post(f"{DEFAULT_API_URL}/api/v1/encode").mock(
+            return_value=httpx.Response(200, json=VALID_BODY)
+        )
+        r1 = se.encode(SAMPLE_EDGES, cache=True)
+        r2 = se.encode(SAMPLE_EDGES, cache=True)
+        assert route.call_count == 1
+        # Identity isn't required, but the parsed object should be the same instance.
+        assert r1 is r2
+
+    @respx.mock
+    def test_cache_is_order_independent(self):
+        respx.post(f"{DEFAULT_API_URL}/api/v1/encode").mock(
+            return_value=httpx.Response(200, json=VALID_BODY)
+        )
+        r1 = se.encode([["a", "b"], ["b", "c"]], cache=True)
+        r2 = se.encode([["b", "c"], ["a", "b"]], cache=True)
+        assert r1 is r2
+
+    @respx.mock
+    def test_cache_distinct_edge_sets_dont_collide(self):
+        route = respx.post(f"{DEFAULT_API_URL}/api/v1/encode").mock(
+            return_value=httpx.Response(200, json=VALID_BODY)
+        )
+        se.encode([["a", "b"], ["b", "c"]], cache=True)
+        se.encode([["a", "b"], ["b", "d"]], cache=True)
+        # Different edge sets -> two HTTP calls.
+        assert route.call_count == 2
+
+    @respx.mock
+    def test_clear_encode_cache(self):
+        route = respx.post(f"{DEFAULT_API_URL}/api/v1/encode").mock(
+            return_value=httpx.Response(200, json=VALID_BODY)
+        )
+        se.encode(SAMPLE_EDGES, cache=True)
+        se.clear_encode_cache()
+        se.encode(SAMPLE_EDGES, cache=True)
+        assert route.call_count == 2
+
+
 class TestServerNodeLimit:
     @respx.mock
     def test_server_403_translates_to_node_limit_error(self):

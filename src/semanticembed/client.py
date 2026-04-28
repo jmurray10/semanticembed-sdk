@@ -100,6 +100,39 @@ def _parse_response(data: dict, elapsed_ms: float) -> SemanticResult:
 _RETRYABLE_STATUS = {502, 503, 504}
 _RETRY_BACKOFF_SECONDS = 0.5
 
+# In-process LRU for encode results, keyed by frozenset of (source, target)
+# pairs from the normalized edge list. Off by default — only populated when
+# the caller passes `cache=True` to encode(). Survives the lifetime of the
+# process; clear with clear_encode_cache().
+from collections import OrderedDict
+_ENCODE_CACHE: OrderedDict[frozenset, "SemanticResult"] = OrderedDict()
+_ENCODE_CACHE_MAX = 64
+
+
+def clear_encode_cache() -> None:
+    """Empty the in-process encode result cache."""
+    _ENCODE_CACHE.clear()
+
+
+def _encode_cache_key(normalized: list[list[str]]) -> frozenset:
+    """Order-independent cache key: frozenset of (source, target) pairs."""
+    return frozenset((e[0], e[1]) for e in normalized)
+
+
+def _cache_get(key: frozenset):
+    if key in _ENCODE_CACHE:
+        # Move to end (most-recently-used)
+        _ENCODE_CACHE.move_to_end(key)
+        return _ENCODE_CACHE[key]
+    return None
+
+
+def _cache_put(key: frozenset, result: "SemanticResult") -> None:
+    _ENCODE_CACHE[key] = result
+    _ENCODE_CACHE.move_to_end(key)
+    while len(_ENCODE_CACHE) > _ENCODE_CACHE_MAX:
+        _ENCODE_CACHE.popitem(last=False)
+
 
 def _post_with_retry(
     url: str,
@@ -139,6 +172,7 @@ def encode(
     license_key: str | None = None,
     api_url: str | None = None,
     timeout: float = 60.0,
+    cache: bool = False,
 ) -> SemanticResult:
     """Encode a directed graph and return 6D structural coordinates.
 
@@ -149,6 +183,11 @@ def encode(
         license_key: Optional API key. If not provided, checks env/config.
         api_url: Override the API endpoint (for testing).
         timeout: Request timeout in seconds.
+        cache: If True, look up the result in an in-process LRU keyed on the
+            edge set. Repeat calls with the same edges return immediately
+            without an HTTP round trip. Cached entry is order-independent
+            (``[(a,b),(b,c)]`` and ``[(b,c),(a,b)]`` hit the same entry).
+            Default False to preserve existing behavior.
 
     Returns:
         SemanticResult with .vectors, .table, .graph_info, .risks
@@ -156,6 +195,12 @@ def encode(
     normalized = _normalize_edges(edges)
     if len(normalized) < 2:
         raise ValueError("Graph must have at least 2 edges.")
+
+    if cache:
+        cache_key = _encode_cache_key(normalized)
+        hit = _cache_get(cache_key)
+        if hit is not None:
+            return hit
 
     key = _resolve_key(license_key)
     url = (api_url or os.environ.get("SEMANTICEMBED_API_URL") or DEFAULT_API_URL).rstrip("/")
@@ -207,7 +252,10 @@ def encode(
         detail = resp.text[:200]
         raise APIError(resp.status_code, detail)
 
-    return _parse_response(resp.json(), elapsed_ms)
+    result = _parse_response(resp.json(), elapsed_ms)
+    if cache:
+        _cache_put(cache_key, result)
+    return result
 
 
 def report(result: SemanticResult) -> RiskReport:

@@ -342,7 +342,7 @@ def from_terraform(path: str = ".") -> list[tuple[str, str]]:
 # Python imports
 # ---------------------------------------------------------------------------
 
-def from_python_imports(path: str = ".") -> list[tuple[str, str]]:
+def from_python_imports(path: str = ".", *, depth: int | None = None) -> list[tuple[str, str]]:
     """Extract module dependency edges from Python import statements.
 
     Scans ``.py`` files and builds a directed graph of which modules import
@@ -351,15 +351,31 @@ def from_python_imports(path: str = ".") -> list[tuple[str, str]]:
 
     Args:
         path: Path to a Python file or directory of Python files.
+        depth: How aggressively to roll up module names to service boundaries.
+
+            - ``None`` (default): use the last component of each module path.
+              ``myapp.auth.user`` -> ``user``. Backwards-compatible.
+            - ``1``: keep only the top-level package. ``myapp.auth.user`` ->
+              ``myapp``. Edges between submodules of the same top-level package
+              collapse to self-loops and are dropped. Useful for monorepos
+              where the top-level dirs are services.
+            - ``2``: first two components. ``services.auth.user`` ->
+              ``services.auth``. Useful when services live one level down,
+              e.g. ``services/auth/``, ``services/payments/``.
+            - ``N`` for any N: first N components.
 
     Returns:
-        List of (importer, imported) edge tuples using module names.
+        List of (importer, imported) edge tuples using rolled-up module names.
 
     Example::
 
+        # Default: short names
         edges = se.extract.from_python_imports("src/")
+
+        # Service-boundary rollup for a monorepo with services/<svc>/...
+        edges = se.extract.from_python_imports(".", depth=2)
+
         result = se.encode(edges)
-        print(result.table)
     """
     if os.path.isfile(path):
         files = [path]
@@ -424,15 +440,23 @@ def from_python_imports(path: str = ".") -> list[tuple[str, str]]:
                 if target:
                     break
             if target:
-                # Use short names (last component) for readability
-                src_short = src_mod.split(".")[-1]
-                dst_short = target.split(".")[-1]
-                # If short names collide, use longer qualified names
-                if src_short == dst_short:
-                    src_short = src_mod
-                    dst_short = target
-                edges.append((src_short, dst_short))
+                if depth is None:
+                    # Default: short names (last component) for readability
+                    src_short = src_mod.split(".")[-1]
+                    dst_short = target.split(".")[-1]
+                    # If short names collide, use longer qualified names
+                    if src_short == dst_short:
+                        src_short = src_mod
+                        dst_short = target
+                    edges.append((src_short, dst_short))
+                else:
+                    # Roll up to first `depth` components.
+                    src_roll = ".".join(src_mod.split(".")[:depth])
+                    dst_roll = ".".join(target.split(".")[:depth])
+                    edges.append((src_roll, dst_roll))
 
+    # _dedupe drops self-loops (which depth rollup naturally creates within
+    # a single top-level package) and exact duplicates.
     return _dedupe(edges)
 
 
