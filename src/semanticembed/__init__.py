@@ -16,7 +16,7 @@ from .dedupe import dedupe_edges
 from .explain import explain, ask
 from .find_edges import find_edges
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 # Set this to your license key to unlock unlimited nodes:
 #   import semanticembed

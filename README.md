@@ -167,6 +167,11 @@ edges = se.extract.from_package_json_workspaces(".")
 # From OpenTelemetry traces (OTLP / Jaeger / Zipkin JSON)
 edges = se.extract.from_otel_traces("traces.json")
 
+# From AI agent frameworks (AST-only — no need to install the framework)
+edges = se.extract.from_langgraph("workflow.py")   # StateGraph.add_edge / add_conditional_edges / set_entry_point
+edges = se.extract.from_crewai("crew.py")          # Task(agent=...) / Task(context=...) / Crew(manager_agent=...)
+edges = se.extract.from_autogen("agents.py")       # GroupChat(agents=...) / initiate_chat(...)
+
 # Auto-detect everything in a directory
 edges, sources = se.extract.from_directory(".")
 print(f"Found {len(edges)} edges from {sources}")
@@ -191,6 +196,30 @@ a deterministic parser for the three common JSON formats:
 Edges are emitted at the **service level** — same-service spans roll up. Place
 a `traces.json` (or `otel.json` / `jaeger.json` / `zipkin.json`) at your repo
 root and `from_directory()` will pick it up.
+
+### AI agent frameworks
+
+The three popular Python agent frameworks each have an explicit graph-building
+API. Static AST parsing extracts the actual call graph the framework will run.
+The SDK does **not** import or run the framework — you don't need
+`pip install langgraph` to extract from a LangGraph script.
+
+**LangGraph** — `g.add_edge`, `g.add_conditional_edges` (with explicit
+`path_map`), `g.set_entry_point`, `g.set_finish_point`. The sentinels `START`
+and `END` are emitted as literal node names.
+
+**CrewAI** — `Task(agent=researcher)` produces `researcher -> task_var`;
+`Task(context=[t1, t2])` produces `t1 -> task_var` / `t2 -> task_var`;
+`Crew(manager_agent=mgr)` adds a `mgr -> agent` fan-out.
+
+**AutoGen** — `GroupChat(agents=[a, b, c])` with an explicit
+`GroupChatManager` produces a star (`manager -> a`, `-> b`, `-> c`).
+Without a manager, it's fully connected. `x.initiate_chat(y)` always
+produces `x -> y`.
+
+`from_directory()` auto-detects these by scanning Python files for the
+relevant `import` statements and only running the matching parser on those
+files (cheap and accurate vs. walking the whole tree).
 
 ### Blending sources cleanly
 

@@ -680,6 +680,277 @@ def _otel_from_zipkin(spans: list) -> list[tuple[str, str]]:
 
 
 # ---------------------------------------------------------------------------
+# AI agent frameworks (LangGraph / CrewAI / AutoGen)
+# ---------------------------------------------------------------------------
+#
+# All three parse Python source via `ast` only — they do NOT import the
+# framework being analyzed. That means the SDK works on a repo without
+# `pip install langgraph` etc.
+
+import ast
+
+
+def _ast_str_arg(node: ast.expr) -> str | None:
+    """Resolve an AST node to a string label.
+
+    Handles string constants, bare Name references (use the name),
+    Attribute lookups (e.g. `agent.role` -> "agent.role"), and the
+    LangGraph sentinels START / END.
+    """
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.Name):
+        # `START` / `END` from langgraph come through as Name nodes;
+        # any other Name is a Python variable we use as a node label.
+        return node.id
+    if isinstance(node, ast.Attribute):
+        parts = []
+        cur: ast.expr = node
+        while isinstance(cur, ast.Attribute):
+            parts.append(cur.attr)
+            cur = cur.value
+        if isinstance(cur, ast.Name):
+            parts.append(cur.id)
+            return ".".join(reversed(parts))
+    return None
+
+
+def _kwargs(call: ast.Call) -> dict[str, ast.expr]:
+    return {kw.arg: kw.value for kw in call.keywords if kw.arg}
+
+
+def from_langgraph(path: str) -> list[tuple[str, str]]:
+    """Extract edges from a LangGraph workflow definition.
+
+    Recognized patterns (the variable name in front of `.add_edge` etc. is
+    irrelevant — we match on the method name):
+
+    - ``g.add_edge("planner", "researcher")``
+    - ``g.add_edge(START, "planner")``
+    - ``g.add_conditional_edges("planner", router, {"yes": "act", "no": "end"})``
+    - ``g.set_entry_point("planner")``  ->  ``START -> planner``
+    - ``g.set_finish_point("act")``     ->  ``act -> END``
+
+    Args:
+        path: Path to a Python file defining the graph.
+
+    Returns:
+        Deduped list of ``(source, target)`` edges.
+    """
+    with open(path, encoding="utf-8") as f:
+        tree = ast.parse(f.read(), filename=path)
+
+    edges: list[tuple[str, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        method = node.func.attr
+
+        if method == "add_edge" and len(node.args) >= 2:
+            s = _ast_str_arg(node.args[0])
+            t = _ast_str_arg(node.args[1])
+            if s and t:
+                edges.append((s, t))
+
+        elif method == "add_conditional_edges":
+            if not node.args:
+                continue
+            src = _ast_str_arg(node.args[0])
+            if not src:
+                continue
+            # Optional 3rd arg: dict mapping {condition: target}
+            mapping_node: ast.expr | None = None
+            if len(node.args) >= 3:
+                mapping_node = node.args[2]
+            else:
+                mapping_node = _kwargs(node).get("path_map") or _kwargs(node).get("conditional_edge_mapping")
+            if isinstance(mapping_node, ast.Dict):
+                for v in mapping_node.values:
+                    target = _ast_str_arg(v)
+                    if target:
+                        edges.append((src, target))
+
+        elif method == "set_entry_point" and node.args:
+            t = _ast_str_arg(node.args[0])
+            if t:
+                edges.append(("START", t))
+
+        elif method == "set_finish_point" and node.args:
+            s = _ast_str_arg(node.args[0])
+            if s:
+                edges.append((s, "END"))
+
+    return _dedupe(edges)
+
+
+def from_crewai(path: str) -> list[tuple[str, str]]:
+    """Extract edges from a CrewAI script.
+
+    Patterns:
+
+    - ``my_task = Task(description=..., agent=researcher)``
+        emits ``researcher -> my_task``
+    - ``my_task = Task(..., context=[prep_task, lookup_task])``
+        emits ``prep_task -> my_task`` and ``lookup_task -> my_task``
+    - ``Crew(agents=[a, b], tasks=[t1, t2], manager_agent=mgr)``
+        emits ``mgr -> a``, ``mgr -> b`` (manager broadcasts)
+
+    Args:
+        path: Path to a Python file using crewai.
+
+    Returns:
+        Deduped list of edges. Node names are the Python variable names
+        from the source file.
+    """
+    with open(path, encoding="utf-8") as f:
+        tree = ast.parse(f.read(), filename=path)
+
+    edges: list[tuple[str, str]] = []
+
+    def _is_named_call(call: ast.Call, name: str) -> bool:
+        f = call.func
+        if isinstance(f, ast.Name) and f.id == name:
+            return True
+        if isinstance(f, ast.Attribute) and f.attr == name:
+            return True
+        return False
+
+    for node in ast.walk(tree):
+        # Find `task_var = Task(...)` or `task_var = SomeTask(...)`
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            if isinstance(target, ast.Name) and isinstance(node.value, ast.Call):
+                call = node.value
+                task_name = target.id
+                if _is_named_call(call, "Task"):
+                    kwargs = _kwargs(call)
+                    if "agent" in kwargs:
+                        agent = _ast_str_arg(kwargs["agent"])
+                        if agent:
+                            edges.append((agent, task_name))
+                    if "context" in kwargs and isinstance(kwargs["context"], (ast.List, ast.Tuple)):
+                        for ctx in kwargs["context"].elts:
+                            ctx_name = _ast_str_arg(ctx)
+                            if ctx_name:
+                                edges.append((ctx_name, task_name))
+
+        # Find `Crew(agents=[a, b], manager_agent=mgr)` (manager fans out to agents)
+        if isinstance(node, ast.Call) and _is_named_call(node, "Crew"):
+            kwargs = _kwargs(node)
+            agents_list: list[str] = []
+            if "agents" in kwargs and isinstance(kwargs["agents"], (ast.List, ast.Tuple)):
+                for a in kwargs["agents"].elts:
+                    name = _ast_str_arg(a)
+                    if name:
+                        agents_list.append(name)
+            manager = None
+            if "manager_agent" in kwargs:
+                manager = _ast_str_arg(kwargs["manager_agent"])
+            if manager:
+                for a in agents_list:
+                    if a != manager:
+                        edges.append((manager, a))
+
+    return _dedupe(edges)
+
+
+def from_autogen(path: str) -> list[tuple[str, str]]:
+    """Extract edges from a Microsoft AutoGen / AG2 script.
+
+    Patterns:
+
+    - ``user_proxy.initiate_chat(assistant, message=...)``
+        emits ``user_proxy -> assistant``
+    - ``GroupChat(agents=[a, b, c])`` (no explicit manager)
+        emits a fully-connected subgraph (``a -> b``, ``a -> c``, ``b -> a``, ...)
+        because every agent can address every other in the group
+    - ``GroupChatManager(groupchat=gc)`` paired with the GroupChat above
+        instead emits a star: ``manager -> a``, ``manager -> b``, ``manager -> c``
+
+    Args:
+        path: Path to a Python file using autogen / ag2.
+
+    Returns:
+        Deduped list of edges. Node names are Python variable names.
+    """
+    with open(path, encoding="utf-8") as f:
+        tree = ast.parse(f.read(), filename=path)
+
+    edges: list[tuple[str, str]] = []
+
+    # First pass: collect groupchat var -> [agent vars]
+    groupchats: dict[str, list[str]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            if not isinstance(target, ast.Name) or not isinstance(node.value, ast.Call):
+                continue
+            call = node.value
+            f = call.func
+            name_match = (
+                (isinstance(f, ast.Name) and f.id == "GroupChat")
+                or (isinstance(f, ast.Attribute) and f.attr == "GroupChat")
+            )
+            if not name_match:
+                continue
+            kwargs = _kwargs(call)
+            agents_node = kwargs.get("agents")
+            if isinstance(agents_node, (ast.List, ast.Tuple)):
+                names = [_ast_str_arg(a) for a in agents_node.elts]
+                groupchats[target.id] = [n for n in names if n]
+
+    # Map groupchat var -> manager var (if any)
+    chat_to_manager: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            if not isinstance(target, ast.Name) or not isinstance(node.value, ast.Call):
+                continue
+            call = node.value
+            f = call.func
+            mgr_match = (
+                (isinstance(f, ast.Name) and f.id == "GroupChatManager")
+                or (isinstance(f, ast.Attribute) and f.attr == "GroupChatManager")
+            )
+            if not mgr_match:
+                continue
+            kwargs = _kwargs(call)
+            gc_node = kwargs.get("groupchat") or kwargs.get("group_chat")
+            gc_name = _ast_str_arg(gc_node) if gc_node else None
+            if gc_name and gc_name in groupchats:
+                chat_to_manager[gc_name] = target.id
+
+    for chat, agents in groupchats.items():
+        manager = chat_to_manager.get(chat)
+        if manager:
+            for a in agents:
+                if a != manager:
+                    edges.append((manager, a))
+        else:
+            # No explicit manager — treat as fully connected (every agent can
+            # address every other).
+            for a in agents:
+                for b in agents:
+                    if a != b:
+                        edges.append((a, b))
+
+    # Second pass: `x.initiate_chat(y, ...)` -> x -> y
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not isinstance(node.func, ast.Attribute) or node.func.attr != "initiate_chat":
+            continue
+        caller = _ast_str_arg(node.func.value)
+        if not caller or not node.args:
+            continue
+        recipient = _ast_str_arg(node.args[0])
+        if recipient:
+            edges.append((caller, recipient))
+
+    return _dedupe(edges)
+
+
+# ---------------------------------------------------------------------------
 # Auto-detect
 # ---------------------------------------------------------------------------
 
@@ -799,6 +1070,34 @@ def from_directory(path: str = ".") -> tuple[list[tuple[str, str]], dict[str, in
                 if edges:
                     all_edges.extend(edges)
                     sources["otel-traces"] = sources.get("otel-traces", 0) + len(edges)
+            except Exception:
+                pass
+
+    # AI agent frameworks — for each file that imports a known framework,
+    # run the matching parser on JUST that file (cheaper + more accurate
+    # than walking every Python file).
+    ai_specs = (
+        ("langgraph",   ("langgraph",),                 from_langgraph),
+        ("crewai",      ("crewai",),                    from_crewai),
+        ("autogen",     ("autogen", "autogen_agentchat", "ag2"), from_autogen),
+    )
+    py_files = glob.glob(os.path.join(path, "**/*.py"), recursive=True)
+    py_files = [f for f in py_files if not any(
+        p in f for p in ["node_modules", ".venv", "venv", "__pycache__", ".git"]
+    )]
+    for fpath in py_files:
+        try:
+            head = open(fpath, encoding="utf-8", errors="replace").read(4096)
+        except OSError:
+            continue
+        for label, prefixes, parser in ai_specs:
+            if not any(f"import {p}" in head or f"from {p}" in head for p in prefixes):
+                continue
+            try:
+                edges = parser(fpath)
+                if edges:
+                    all_edges.extend(edges)
+                    sources[label] = sources.get(label, 0) + len(edges)
             except Exception:
                 pass
 
