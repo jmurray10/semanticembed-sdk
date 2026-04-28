@@ -12,10 +12,11 @@ from .exceptions import (
     SemanticConnectionError,
 )
 from . import extract
+from .dedupe import dedupe_edges
 from .explain import explain, ask
 from .find_edges import find_edges
 
-__version__ = "0.2.3"
+__version__ = "0.3.0"
 
 # Set this to your license key to unlock unlimited nodes:
 #   import semanticembed
@@ -32,6 +33,7 @@ __all__ = [
     "ask",
     "extract",
     "find_edges",
+    "dedupe_edges",
     "SemanticResult",
     "RiskReport",
     "RiskEntry",

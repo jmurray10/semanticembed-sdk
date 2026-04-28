@@ -164,6 +164,9 @@ edges = se.extract.from_python_imports("src/")
 # From Node.js monorepo (inter-package dependencies)
 edges = se.extract.from_package_json_workspaces(".")
 
+# From OpenTelemetry traces (OTLP / Jaeger / Zipkin JSON)
+edges = se.extract.from_otel_traces("traces.json")
+
 # Auto-detect everything in a directory
 edges, sources = se.extract.from_directory(".")
 print(f"Found {len(edges)} edges from {sources}")
@@ -173,7 +176,42 @@ result = se.encode(edges)
 print(result.table)
 ```
 
-Requires `pyyaml` for YAML parsing: `pip install pyyaml`
+Requires `pyyaml` for YAML parsing: `pip install 'semanticembed[extract]'`
+
+### Trace ingestion (highest-fidelity edges)
+
+Compose / k8s / Terraform describe deployment, not actual call edges. **Real
+runtime traces are the only source with the actual call graph.** v0.3.0 ships
+a deterministic parser for the three common JSON formats:
+
+- **OTLP** (OpenTelemetry Collector / SDK exports): `{"resourceSpans": [...]}`
+- **Jaeger** (`jaeger-query` API, `jaeger-cli`): `{"data": [{"spans": [...]}]}`
+- **Zipkin** (Zipkin v2 API): top-level array with `localEndpoint.serviceName`
+
+Edges are emitted at the **service level** — same-service spans roll up. Place
+a `traces.json` (or `otel.json` / `jaeger.json` / `zipkin.json`) at your repo
+root and `from_directory()` will pick it up.
+
+### Blending sources cleanly
+
+Combining traces + compose + Python imports usually produces the same logical
+service under several names (`auth-svc`, `auth_svc`, `AuthService`). Use
+`dedupe_edges` to canonicalize:
+
+```python
+compose_edges, _ = se.extract.from_directory(".")
+trace_edges = se.extract.from_otel_traces("traces.json")
+
+edges = se.dedupe_edges(
+    list(compose_edges) + trace_edges,
+    normalize="snake",                          # AuthService -> auth_service
+    aliases={"auth_svc": "auth_service"},       # explicit overrides
+)
+result = se.encode(edges)
+```
+
+Modes: `"none"` (default), `"snake"`, `"lower"`, `"kebab"`. Self-loops are
+dropped by default.
 
 ---
 

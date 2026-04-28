@@ -531,6 +531,155 @@ def from_package_json_workspaces(path: str = ".") -> list[tuple[str, str]]:
 
 
 # ---------------------------------------------------------------------------
+# OpenTelemetry traces (OTLP / Jaeger / Zipkin)
+# ---------------------------------------------------------------------------
+
+def from_otel_traces(path: str) -> list[tuple[str, str]]:
+    """Extract service-level call edges from a trace export (JSON).
+
+    Supports three formats — auto-detected by structure:
+
+    - **OTLP JSON**: `{"resourceSpans": [{"scopeSpans": [{"spans": [...]}]}]}`
+      (Default OpenTelemetry Collector / SDK export.)
+    - **Jaeger**: `{"data": [{"spans": [...], "processes": {...}}]}`
+      (`jaeger-query` HTTP API and `jaeger-cli`.)
+    - **Zipkin**: `[{traceId, id, parentId, localEndpoint: {serviceName}}, ...]`
+      (Zipkin v2 JSON API.)
+
+    Edges are emitted at the **service** level, not the span level: a parent
+    span owned by service A and a child span owned by service B produce a
+    single edge ``A -> B``. Same-service spans (intra-process) are dropped,
+    as are self-loops.
+
+    Args:
+        path: Path to the trace JSON file.
+
+    Returns:
+        Deduplicated list of ``(source_service, target_service)`` edges.
+
+    Example::
+
+        edges = se.extract.from_otel_traces("traces.json")
+        result = se.encode(edges)
+    """
+    import json
+
+    with open(path) as f:
+        data = json.load(f)
+
+    if isinstance(data, dict) and "resourceSpans" in data:
+        return _dedupe(_otel_from_otlp(data))
+    if isinstance(data, dict) and "data" in data and isinstance(data["data"], list):
+        return _dedupe(_otel_from_jaeger(data))
+    if isinstance(data, list) and data and isinstance(data[0], dict) and "traceId" in data[0]:
+        return _dedupe(_otel_from_zipkin(data))
+
+    raise ValueError(
+        "Trace file format not recognized. Expected OTLP "
+        "(`resourceSpans`), Jaeger (`data: [{spans, processes}]`), or "
+        "Zipkin (top-level array with `traceId`/`localEndpoint`)."
+    )
+
+
+def _otel_from_otlp(data: dict) -> list[tuple[str, str]]:
+    """Parse OTLP JSON: resourceSpans[*].scopeSpans[*].spans[*]."""
+    span_to_service: dict[str, str] = {}
+    parent_links: list[tuple[str, str]] = []  # (span_id, parent_span_id)
+
+    for rs in data.get("resourceSpans", []):
+        service = _otlp_service_name(rs.get("resource", {}))
+        if not service:
+            continue
+        for ss in rs.get("scopeSpans", []) or rs.get("instrumentationLibrarySpans", []):
+            for span in ss.get("spans", []):
+                span_id = span.get("spanId") or span.get("span_id")
+                parent_id = span.get("parentSpanId") or span.get("parent_span_id")
+                if not span_id:
+                    continue
+                span_to_service[span_id] = service
+                if parent_id and parent_id != "" and not _is_zero_id(parent_id):
+                    parent_links.append((span_id, parent_id))
+
+    edges: list[tuple[str, str]] = []
+    for child_id, parent_id in parent_links:
+        parent_svc = span_to_service.get(parent_id)
+        child_svc = span_to_service.get(child_id)
+        if parent_svc and child_svc and parent_svc != child_svc:
+            edges.append((parent_svc, child_svc))
+    return edges
+
+
+def _otlp_service_name(resource: dict) -> str | None:
+    """Extract `service.name` from an OTLP resource block."""
+    for attr in resource.get("attributes", []):
+        if attr.get("key") == "service.name":
+            value = attr.get("value", {})
+            for k in ("stringValue", "string_value"):
+                if k in value:
+                    return str(value[k])
+    return None
+
+
+def _is_zero_id(span_id: str) -> bool:
+    """OTLP encodes 'no parent' as all-zeros hex/base64."""
+    if not span_id:
+        return True
+    s = str(span_id).strip().rstrip("=")
+    return all(c in "0A" for c in s) or s == "0"
+
+
+def _otel_from_jaeger(data: dict) -> list[tuple[str, str]]:
+    """Parse Jaeger JSON: data[*].spans[*] with processes lookup."""
+    edges: list[tuple[str, str]] = []
+    for trace in data.get("data", []):
+        processes = trace.get("processes", {})
+        span_to_service: dict[str, str] = {}
+        for span in trace.get("spans", []):
+            sid = span.get("spanID") or span.get("spanId")
+            pid = span.get("processID") or span.get("processId")
+            proc = processes.get(pid, {})
+            svc = proc.get("serviceName")
+            if sid and svc:
+                span_to_service[sid] = svc
+        for span in trace.get("spans", []):
+            sid = span.get("spanID") or span.get("spanId")
+            child_svc = span_to_service.get(sid)
+            if not child_svc:
+                continue
+            # Jaeger represents parents via "references": [{refType: CHILD_OF, spanID}]
+            for ref in span.get("references", []):
+                if ref.get("refType") in ("CHILD_OF", "FOLLOWS_FROM"):
+                    parent_id = ref.get("spanID") or ref.get("spanId")
+                    parent_svc = span_to_service.get(parent_id)
+                    if parent_svc and parent_svc != child_svc:
+                        edges.append((parent_svc, child_svc))
+    return edges
+
+
+def _otel_from_zipkin(spans: list) -> list[tuple[str, str]]:
+    """Parse Zipkin v2 JSON: flat list of {id, parentId, localEndpoint.serviceName}."""
+    span_to_service: dict[str, str] = {}
+    for span in spans:
+        sid = span.get("id")
+        endpoint = span.get("localEndpoint") or {}
+        svc = endpoint.get("serviceName")
+        if sid and svc:
+            span_to_service[sid] = svc
+
+    edges: list[tuple[str, str]] = []
+    for span in spans:
+        sid = span.get("id")
+        pid = span.get("parentId")
+        if not sid or not pid:
+            continue
+        parent_svc = span_to_service.get(pid)
+        child_svc = span_to_service.get(sid)
+        if parent_svc and child_svc and parent_svc != child_svc:
+            edges.append((parent_svc, child_svc))
+    return edges
+
+
+# ---------------------------------------------------------------------------
 # Auto-detect
 # ---------------------------------------------------------------------------
 
@@ -628,6 +777,30 @@ def from_directory(path: str = ".") -> tuple[list[tuple[str, str]], dict[str, in
                 sources["package-json"] = len(edges)
         except Exception:
             pass
+
+    # OpenTelemetry traces — covers the highest-quality edge source (real
+    # runtime calls). Auto-picked up from common filenames at the root.
+    for name in ["traces.json", "otel.json", "otlp.json", "jaeger.json", "zipkin.json"]:
+        trace_path = os.path.join(path, name)
+        if os.path.isfile(trace_path):
+            try:
+                edges = from_otel_traces(trace_path)
+                if edges:
+                    all_edges.extend(edges)
+                    sources["otel-traces"] = sources.get("otel-traces", 0) + len(edges)
+            except Exception:
+                pass
+    # Also try a `traces/` directory containing one or more trace files
+    traces_dir = os.path.join(path, "traces")
+    if os.path.isdir(traces_dir):
+        for fname in glob.glob(os.path.join(traces_dir, "*.json")):
+            try:
+                edges = from_otel_traces(fname)
+                if edges:
+                    all_edges.extend(edges)
+                    sources["otel-traces"] = sources.get("otel-traces", 0) + len(edges)
+            except Exception:
+                pass
 
     return _dedupe(all_edges), sources
 
