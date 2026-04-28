@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "semanticembed"
-version = "0.4.1"
+version = "0.5.0"
 description = "6D structural intelligence for directed graphs. Six numbers per node. Sub-millisecond."
 readme = "README.md"
 license = {text = "Proprietary"}

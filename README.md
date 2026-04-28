@@ -197,6 +197,22 @@ Edges are emitted at the **service level** — same-service spans roll up. Place
 a `traces.json` (or `otel.json` / `jaeger.json` / `zipkin.json`) at your repo
 root and `from_directory()` will pick it up.
 
+### Live observability connectors
+
+Static analysis is great for repos. For *running* infra, pull traces directly:
+
+```python
+from semanticembed import live
+
+# Dynatrace — Smartscape services + call relationships
+edges = live.from_dynatrace(
+    env_url="https://abc12345.live.dynatrace.com",
+    api_token=os.environ["DYNATRACE_API_TOKEN"],
+)
+```
+
+Honeycomb and Datadog connectors are tracked for future releases.
+
 ### AI agent frameworks
 
 The three popular Python agent frameworks each have an explicit graph-building
