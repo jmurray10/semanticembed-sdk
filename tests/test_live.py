@@ -18,8 +18,12 @@ ENV_URL = "https://abc12345.live.dynatrace.com"
 
 @pytest.fixture(autouse=True)
 def _clear_env(monkeypatch):
-    monkeypatch.delenv("DYNATRACE_ENV_URL", raising=False)
-    monkeypatch.delenv("DYNATRACE_API_TOKEN", raising=False)
+    for var in (
+        "DYNATRACE_ENV_URL", "DYNATRACE_API_TOKEN",
+        "HONEYCOMB_DATASET", "HONEYCOMB_API_KEY",
+        "DD_API_KEY", "DD_APP_KEY", "DATADOG_API_KEY", "DATADOG_APP_KEY",
+    ):
+        monkeypatch.delenv(var, raising=False)
 
 
 def _entity(eid, name, calls=None):
@@ -134,3 +138,214 @@ class TestLiveExportedFromTopLevel:
         # should work without an explicit `from semanticembed import live`.
         assert hasattr(se, "live")
         assert hasattr(se.live, "from_dynatrace")
+        assert hasattr(se.live, "from_honeycomb")
+        assert hasattr(se.live, "from_datadog")
+
+
+# ---------- Honeycomb ----------------------------------------------------
+
+HC_URL = "https://api.honeycomb.io"
+DATASET = "my-app"
+
+
+def _hc_row(span_id: str, parent_id: str | None, service: str) -> dict:
+    return {
+        "data": {
+            "trace.span_id": span_id,
+            "trace.parent_id": parent_id,
+            "service.name": service,
+            "COUNT": 1,
+        }
+    }
+
+
+class TestHoneycomb:
+    @respx.mock
+    def test_builds_edges_from_span_rows(self):
+        # frontend (s1) -> auth (s2) -> db (s3); same-service spans should drop.
+        rows = [
+            _hc_row("s1", None, "frontend"),
+            _hc_row("s2", "s1", "auth"),
+            _hc_row("s2b", "s2", "auth"),  # same-service: dropped
+            _hc_row("s3", "s2b", "db"),
+        ]
+        respx.post(f"{HC_URL}/1/queries/{DATASET}").mock(
+            return_value=httpx.Response(201, json={"id": "q1"})
+        )
+        respx.post(f"{HC_URL}/1/query_results/{DATASET}").mock(
+            return_value=httpx.Response(201, json={"id": "r1"})
+        )
+        respx.get(f"{HC_URL}/1/query_results/{DATASET}/r1").mock(
+            return_value=httpx.Response(200, json={
+                "complete": True,
+                "data": {"results": rows},
+            })
+        )
+        edges = live.from_honeycomb(dataset=DATASET, api_key="hc-test")
+        edges_set = {tuple(e) for e in edges}
+        assert ("frontend", "auth") in edges_set
+        assert ("auth", "db") in edges_set
+        assert ("auth", "auth") not in edges_set
+
+    @respx.mock
+    def test_sends_team_header(self):
+        route = respx.post(f"{HC_URL}/1/queries/{DATASET}").mock(
+            return_value=httpx.Response(201, json={"id": "q1"})
+        )
+        respx.post(f"{HC_URL}/1/query_results/{DATASET}").mock(
+            return_value=httpx.Response(201, json={"id": "r1"})
+        )
+        respx.get(f"{HC_URL}/1/query_results/{DATASET}/r1").mock(
+            return_value=httpx.Response(200, json={"complete": True, "data": {"results": []}})
+        )
+        live.from_honeycomb(dataset=DATASET, api_key="hc-secret")
+        assert route.calls.last.request.headers["X-Honeycomb-Team"] == "hc-secret"
+
+    @respx.mock
+    def test_uses_env_vars_as_fallback(self, monkeypatch):
+        monkeypatch.setenv("HONEYCOMB_DATASET", DATASET)
+        monkeypatch.setenv("HONEYCOMB_API_KEY", "hc-from-env")
+        respx.post(f"{HC_URL}/1/queries/{DATASET}").mock(
+            return_value=httpx.Response(201, json={"id": "q1"})
+        )
+        respx.post(f"{HC_URL}/1/query_results/{DATASET}").mock(
+            return_value=httpx.Response(201, json={"id": "r1"})
+        )
+        route = respx.get(f"{HC_URL}/1/query_results/{DATASET}/r1").mock(
+            return_value=httpx.Response(200, json={"complete": True, "data": {"results": []}})
+        )
+        live.from_honeycomb()
+        assert route.calls.last.request.headers["X-Honeycomb-Team"] == "hc-from-env"
+
+    def test_raises_when_dataset_missing(self):
+        with pytest.raises(ValueError, match="dataset"):
+            live.from_honeycomb(api_key="hc-test")
+
+    def test_raises_when_api_key_missing(self):
+        with pytest.raises(ValueError, match="api_key"):
+            live.from_honeycomb(dataset=DATASET)
+
+    @respx.mock
+    def test_eu_api_url_override(self):
+        eu = "https://api.eu1.honeycomb.io"
+        respx.post(f"{eu}/1/queries/{DATASET}").mock(
+            return_value=httpx.Response(201, json={"id": "q1"})
+        )
+        respx.post(f"{eu}/1/query_results/{DATASET}").mock(
+            return_value=httpx.Response(201, json={"id": "r1"})
+        )
+        respx.get(f"{eu}/1/query_results/{DATASET}/r1").mock(
+            return_value=httpx.Response(200, json={"complete": True, "data": {"results": []}})
+        )
+        live.from_honeycomb(dataset=DATASET, api_key="hc-eu", api_url=eu)
+
+
+# ---------- Datadog ------------------------------------------------------
+
+DD_URL = "https://api.datadoghq.com"
+
+
+def _dd_event(span_id: str, parent_id: str | None, service: str) -> dict:
+    return {
+        "id": span_id,
+        "type": "spans",
+        "attributes": {
+            "span_id": span_id,
+            "parent_id": parent_id,
+            "service": service,
+        },
+    }
+
+
+class TestDatadog:
+    @respx.mock
+    def test_builds_edges_from_span_search(self):
+        respx.post(f"{DD_URL}/api/v2/spans/events/search").mock(
+            return_value=httpx.Response(200, json={
+                "data": [
+                    _dd_event("s1", None, "frontend"),
+                    _dd_event("s2", "s1", "auth"),
+                    _dd_event("s3", "s2", "db"),
+                ],
+                "meta": {"page": {}},
+            })
+        )
+        edges = live.from_datadog(api_key="dd-key", app_key="dd-app")
+        edges_set = {tuple(e) for e in edges}
+        assert ("frontend", "auth") in edges_set
+        assert ("auth", "db") in edges_set
+
+    @respx.mock
+    def test_paginates_via_cursor(self):
+        respx.post(f"{DD_URL}/api/v2/spans/events/search").mock(
+            side_effect=[
+                httpx.Response(200, json={
+                    "data": [_dd_event("s1", None, "frontend"), _dd_event("s2", "s1", "auth")],
+                    "meta": {"page": {"after": "cursor123"}},
+                }),
+                httpx.Response(200, json={
+                    "data": [_dd_event("s3", "s2", "db")],
+                    "meta": {"page": {}},
+                }),
+            ]
+        )
+        edges = live.from_datadog(api_key="dd-key", app_key="dd-app", max_spans=5000)
+        edges_set = {tuple(e) for e in edges}
+        assert ("frontend", "auth") in edges_set
+        assert ("auth", "db") in edges_set
+
+    @respx.mock
+    def test_sends_both_auth_headers(self):
+        route = respx.post(f"{DD_URL}/api/v2/spans/events/search").mock(
+            return_value=httpx.Response(200, json={"data": [], "meta": {"page": {}}})
+        )
+        live.from_datadog(api_key="api-secret", app_key="app-secret")
+        sent = route.calls.last.request
+        assert sent.headers["DD-API-KEY"] == "api-secret"
+        assert sent.headers["DD-APPLICATION-KEY"] == "app-secret"
+
+    @respx.mock
+    def test_eu_site_override(self):
+        eu = "https://api.datadoghq.eu"
+        respx.post(f"{eu}/api/v2/spans/events/search").mock(
+            return_value=httpx.Response(200, json={"data": [], "meta": {"page": {}}})
+        )
+        live.from_datadog(api_key="dd", app_key="dd", site="datadoghq.eu")
+
+    @respx.mock
+    def test_env_filter_in_query(self):
+        route = respx.post(f"{DD_URL}/api/v2/spans/events/search").mock(
+            return_value=httpx.Response(200, json={"data": [], "meta": {"page": {}}})
+        )
+        live.from_datadog(api_key="dd", app_key="dd", env="prod", service="api")
+        body = route.calls.last.request.read().decode()
+        assert "env:prod" in body
+        assert "service:api" in body
+
+    @respx.mock
+    def test_uses_env_vars_as_fallback(self, monkeypatch):
+        monkeypatch.setenv("DD_API_KEY", "from-env-api")
+        monkeypatch.setenv("DD_APP_KEY", "from-env-app")
+        route = respx.post(f"{DD_URL}/api/v2/spans/events/search").mock(
+            return_value=httpx.Response(200, json={"data": [], "meta": {"page": {}}})
+        )
+        live.from_datadog()
+        sent = route.calls.last.request
+        assert sent.headers["DD-API-KEY"] == "from-env-api"
+        assert sent.headers["DD-APPLICATION-KEY"] == "from-env-app"
+
+    def test_raises_when_api_key_missing(self):
+        with pytest.raises(ValueError, match="api_key"):
+            live.from_datadog(app_key="dd-app")
+
+    def test_raises_when_app_key_missing(self):
+        with pytest.raises(ValueError, match="app_key"):
+            live.from_datadog(api_key="dd-api")
+
+    @respx.mock
+    def test_propagates_4xx(self):
+        respx.post(f"{DD_URL}/api/v2/spans/events/search").mock(
+            return_value=httpx.Response(403, text="forbidden")
+        )
+        with pytest.raises(httpx.HTTPStatusError):
+            live.from_datadog(api_key="bad", app_key="bad")

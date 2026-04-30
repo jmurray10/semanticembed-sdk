@@ -2,6 +2,21 @@
 
 All notable changes to the SemanticEmbed SDK.
 
+## 0.7.0 — Honeycomb + Datadog live connectors
+
+- New: `semanticembed.live.from_honeycomb(dataset, api_key)` — runs a
+  Honeycomb Query API request that breaks down spans by `trace.span_id`,
+  `trace.parent_id`, and `service.name`, then derives parent-child
+  service edges. Polls the result endpoint until complete.
+  Override `api_url` for EU tenants.
+- New: `semanticembed.live.from_datadog(api_key, app_key)` — calls the
+  Spans Search API (`POST /api/v2/spans/events/search`), paginates via
+  `meta.page.after`, applies the same span-row → service-edge join.
+  Optional `env` and `service` filters; `site` override for EU/US3/US5.
+- Both raise clear `ValueError`s when credentials are missing; both fall
+  back to canonical env vars (`HONEYCOMB_API_KEY` / `HONEYCOMB_DATASET`,
+  `DD_API_KEY` / `DD_APP_KEY`).
+
 ## 0.6.0 — Infrastructure-as-code parsers
 
 - New: `se.extract.from_cloudformation(template)` — parses YAML/JSON templates,

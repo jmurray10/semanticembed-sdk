@@ -218,9 +218,22 @@ edges = live.from_dynatrace(
     env_url="https://abc12345.live.dynatrace.com",
     api_token=os.environ["DYNATRACE_API_TOKEN"],
 )
-```
 
-Honeycomb and Datadog connectors are tracked for future releases.
+# Honeycomb — Query API over a dataset
+edges = live.from_honeycomb(
+    dataset="my-app-prod",
+    api_key=os.environ["HONEYCOMB_API_KEY"],
+    lookback_seconds=900,
+)
+
+# Datadog — Spans Search API
+edges = live.from_datadog(
+    api_key=os.environ["DD_API_KEY"],
+    app_key=os.environ["DD_APP_KEY"],
+    env="prod",
+    lookback="now-30m",
+)
+```
 
 ### AI agent frameworks
 
