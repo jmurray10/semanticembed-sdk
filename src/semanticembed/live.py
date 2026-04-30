@@ -6,16 +6,55 @@ the same shape as the local extractors: ``list[tuple[str, str]]``.
 
 For SaaS APIs that require auth, credentials may be passed explicitly or
 read from the canonical environment variable for that vendor.
+
+All connectors retry once on transient failures (502/503/504, ConnectError,
+ReadTimeout) with a 0.5s backoff. 4xx responses propagate immediately so
+auth errors surface clearly.
 """
 
 from __future__ import annotations
 
 import os
+import time
 from typing import Any
 
 import httpx
 
 from .extract import _dedupe
+
+
+_RETRYABLE_STATUS = {502, 503, 504}
+_RETRY_BACKOFF_SECONDS = 0.5
+
+
+def _request_with_retry(
+    client: httpx.Client,
+    method: str,
+    url: str,
+    **kwargs: Any,
+) -> httpx.Response:
+    """One retry on 502/503/504/ConnectError/ReadTimeout. Other errors propagate.
+
+    The caller owns the ``httpx.Client`` so cookies / connection pools persist
+    across retries within the same connector call.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(2):
+        try:
+            resp = client.request(method, url, **kwargs)
+            if resp.status_code in _RETRYABLE_STATUS and attempt == 0:
+                time.sleep(_RETRY_BACKOFF_SECONDS)
+                continue
+            return resp
+        except (httpx.ConnectError, httpx.ReadTimeout) as e:
+            last_exc = e
+            if attempt == 0:
+                time.sleep(_RETRY_BACKOFF_SECONDS)
+                continue
+            raise
+    if last_exc is not None:
+        raise last_exc
+    return resp  # pragma: no cover -- last 5xx, kept for the caller's raise_for_status
 
 
 __all__ = ["from_dynatrace", "from_honeycomb", "from_datadog"]
@@ -86,8 +125,9 @@ def from_dynatrace(
                     "fields": "fromRelationships.calls",
                     "pageSize": 500,
                 }
-            resp = client.get(
-                f"{env_url}/api/v2/entities", headers=headers, params=params
+            resp = _request_with_retry(
+                client, "GET", f"{env_url}/api/v2/entities",
+                headers=headers, params=params,
             )
             resp.raise_for_status()
             data = resp.json()
@@ -190,8 +230,9 @@ def from_honeycomb(
 
     with httpx.Client(timeout=timeout) as client:
         # 1) Create the query.
-        r1 = client.post(
-            f"{api_url}/1/queries/{dataset}", headers=headers, json=query_body
+        r1 = _request_with_retry(
+            client, "POST", f"{api_url}/1/queries/{dataset}",
+            headers=headers, json=query_body,
         )
         r1.raise_for_status()
         query_id = r1.json().get("id")
@@ -199,8 +240,8 @@ def from_honeycomb(
             raise RuntimeError("Honeycomb create-query returned no id")
 
         # 2) Start the result and poll until complete.
-        r2 = client.post(
-            f"{api_url}/1/query_results/{dataset}",
+        r2 = _request_with_retry(
+            client, "POST", f"{api_url}/1/query_results/{dataset}",
             headers=headers,
             json={"query_id": query_id, "disable_series": True, "limit": max_spans},
         )
@@ -212,8 +253,10 @@ def from_honeycomb(
         deadline = _time.monotonic() + timeout
         rows: list[dict[str, Any]] = []
         while _time.monotonic() < deadline:
-            r3 = client.get(
-                f"{api_url}/1/query_results/{dataset}/{result_id}", headers=headers
+            r3 = _request_with_retry(
+                client, "GET",
+                f"{api_url}/1/query_results/{dataset}/{result_id}",
+                headers=headers,
             )
             r3.raise_for_status()
             payload = r3.json()
@@ -334,7 +377,8 @@ def from_datadog(
         while True:
             if next_cursor:
                 body["data"]["attributes"]["page"]["cursor"] = next_cursor
-            resp = client.post(
+            resp = _request_with_retry(
+                client, "POST",
                 f"https://api.{site}/api/v2/spans/events/search",
                 headers=headers,
                 json=body,

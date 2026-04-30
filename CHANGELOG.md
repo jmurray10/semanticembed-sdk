@@ -2,6 +2,16 @@
 
 All notable changes to the SemanticEmbed SDK.
 
+## 0.7.2 — Live-connector retry
+
+- All three live connectors (`from_dynatrace`, `from_honeycomb`, `from_datadog`)
+  now retry once with 0.5s backoff on transient failures: 502 / 503 / 504 /
+  ConnectError / ReadTimeout. 4xx responses (auth errors etc.) propagate
+  immediately. Matches the behavior already shipped on `encode()` / `aencode()`.
+- Notebooks 02 / 03 / 04 / 06 refreshed to point at the v0.7.x APIs
+  (`cache=True`, `aencode_diff`, `find_edges`, `dedupe_edges`,
+  `from_github_actions`).
+
 ## 0.7.1 — Async surface
 
 - New: `aencode`, `aencode_file`, `aencode_diff` — async siblings of the

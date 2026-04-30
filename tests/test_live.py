@@ -349,3 +349,66 @@ class TestDatadog:
         )
         with pytest.raises(httpx.HTTPStatusError):
             live.from_datadog(api_key="bad", app_key="bad")
+
+
+# ---------- Retry behavior across all three connectors ------------------
+
+class TestRetry:
+    @respx.mock
+    def test_dynatrace_retries_once_on_503(self):
+        route = respx.get(f"{ENV_URL}/api/v2/entities").mock(
+            side_effect=[
+                httpx.Response(503, text="upstream"),
+                httpx.Response(200, json={"entities": []}),
+            ]
+        )
+        live.from_dynatrace(env_url=ENV_URL, api_token="tok")
+        assert route.call_count == 2
+
+    @respx.mock
+    def test_dynatrace_retries_once_on_connect_error(self):
+        route = respx.get(f"{ENV_URL}/api/v2/entities").mock(
+            side_effect=[
+                httpx.ConnectError("dns fail"),
+                httpx.Response(200, json={"entities": []}),
+            ]
+        )
+        live.from_dynatrace(env_url=ENV_URL, api_token="tok")
+        assert route.call_count == 2
+
+    @respx.mock
+    def test_dynatrace_does_not_retry_on_401(self):
+        route = respx.get(f"{ENV_URL}/api/v2/entities").mock(
+            return_value=httpx.Response(401, text="bad token")
+        )
+        with pytest.raises(httpx.HTTPStatusError):
+            live.from_dynatrace(env_url=ENV_URL, api_token="bad")
+        assert route.call_count == 1
+
+    @respx.mock
+    def test_datadog_retries_once_on_503(self):
+        route = respx.post(f"{DD_URL}/api/v2/spans/events/search").mock(
+            side_effect=[
+                httpx.Response(503, text="upstream"),
+                httpx.Response(200, json={"data": [], "meta": {"page": {}}}),
+            ]
+        )
+        live.from_datadog(api_key="dd", app_key="dd")
+        assert route.call_count == 2
+
+    @respx.mock
+    def test_honeycomb_retries_once_on_create_query_503(self):
+        route_q = respx.post(f"{HC_URL}/1/queries/{DATASET}").mock(
+            side_effect=[
+                httpx.Response(503, text="upstream"),
+                httpx.Response(201, json={"id": "q1"}),
+            ]
+        )
+        respx.post(f"{HC_URL}/1/query_results/{DATASET}").mock(
+            return_value=httpx.Response(201, json={"id": "r1"})
+        )
+        respx.get(f"{HC_URL}/1/query_results/{DATASET}/r1").mock(
+            return_value=httpx.Response(200, json={"complete": True, "data": {"results": []}})
+        )
+        live.from_honeycomb(dataset=DATASET, api_key="hc")
+        assert route_q.call_count == 2
