@@ -373,3 +373,170 @@ def encode_diff(
     result_after = encode(edges_after, license_key=license_key,
                           api_url=api_url, timeout=timeout)
     return drift(result_before, result_after, detail=detail)
+
+
+# ---------------------------------------------------------------------------
+# Async surface
+# ---------------------------------------------------------------------------
+#
+# `aencode` / `aencode_file` / `aencode_diff` mirror the sync versions:
+# same preflight node-count guard, same retry-once-on-5xx logic, same
+# in-process LRU cache (shared with the sync side -- a sync encode and a
+# subsequent async aencode of the same edges hit the same cache entry).
+
+
+async def _apost_with_retry(
+    url: str,
+    headers: dict[str, str],
+    payload: dict,
+    timeout: float,
+) -> httpx.Response:
+    """Async sibling of _post_with_retry. One retry on 502/503/504/ConnectError/ReadTimeout."""
+    import asyncio
+
+    last_exc: Exception | None = None
+    for attempt in range(2):
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(
+                    f"{url}/api/v1/encode", headers=headers, json=payload
+                )
+            if resp.status_code in _RETRYABLE_STATUS and attempt == 0:
+                await asyncio.sleep(_RETRY_BACKOFF_SECONDS)
+                continue
+            return resp
+        except (httpx.ConnectError, httpx.ReadTimeout) as e:
+            last_exc = e
+            if attempt == 0:
+                await asyncio.sleep(_RETRY_BACKOFF_SECONDS)
+                continue
+            raise SemanticConnectionError(
+                f"Could not connect to SemanticEmbed API at {url} after retry: {e}"
+            ) from e
+    if last_exc is not None:
+        raise SemanticConnectionError(
+            f"Could not connect to SemanticEmbed API at {url}: {last_exc}"
+        ) from last_exc
+    return resp  # last 5xx response
+
+
+async def aencode(
+    edges: list,
+    *,
+    license_key: str | None = None,
+    api_url: str | None = None,
+    timeout: float = 60.0,
+    cache: bool = False,
+) -> SemanticResult:
+    """Async version of :func:`encode`.
+
+    Identical semantics — preflight node guard, retry-on-5xx, optional
+    cache (shared with the sync ``encode``). Useful inside FastAPI
+    handlers, asyncio task groups, or any event-loop context.
+
+    Example::
+
+        import asyncio, semanticembed as se
+
+        async def main():
+            result = await se.aencode([("a", "b"), ("b", "c")], cache=True)
+            print(result.table)
+
+        asyncio.run(main())
+    """
+    normalized = _normalize_edges(edges)
+    if len(normalized) < 2:
+        raise ValueError("Graph must have at least 2 edges.")
+
+    if cache:
+        cache_key = _encode_cache_key(normalized)
+        hit = _cache_get(cache_key)
+        if hit is not None:
+            return hit
+
+    key = _resolve_key(license_key)
+    url = (api_url or os.environ.get("SEMANTICEMBED_API_URL") or DEFAULT_API_URL).rstrip("/")
+
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if key:
+        headers["X-API-Key"] = key
+
+    node_set: set[str] = set()
+    for e in normalized:
+        node_set.add(e[0])
+        node_set.add(e[1])
+    n_nodes = len(node_set)
+    if not key and n_nodes > FREE_TIER_LIMIT:
+        raise NodeLimitError(n_nodes, FREE_TIER_LIMIT)
+    if not key and n_nodes > FREE_TIER_LIMIT * 0.8:
+        import warnings
+        warnings.warn(
+            f"Graph has {n_nodes}/{FREE_TIER_LIMIT} free tier nodes. "
+            f"Set a license key to avoid hitting the limit.",
+            stacklevel=2,
+        )
+
+    payload = {"edges": normalized}
+    start = time.perf_counter()
+    resp = await _apost_with_retry(url, headers, payload, timeout)
+    elapsed_ms = (time.perf_counter() - start) * 1000
+
+    if resp.status_code == 401:
+        raise AuthenticationError(
+            "Invalid API key. Check your license key or contact jeffmurr@seas.upenn.edu"
+        )
+    if resp.status_code == 403:
+        import re as _re
+        detail = resp.text[:300]
+        match = _re.search(r"(\d+) nodes.*limit.*?(\d+)", detail)
+        if match:
+            raise NodeLimitError(int(match.group(1)), int(match.group(2)))
+        raise NodeLimitError(n_nodes, FREE_TIER_LIMIT)
+    if resp.status_code >= 400:
+        raise APIError(resp.status_code, resp.text[:200])
+
+    result = _parse_response(resp.json(), elapsed_ms)
+    if cache:
+        _cache_put(cache_key, result)
+    return result
+
+
+async def aencode_file(
+    path: str,
+    *,
+    license_key: str | None = None,
+    api_url: str | None = None,
+    timeout: float = 60.0,
+    cache: bool = False,
+) -> SemanticResult:
+    """Async version of :func:`encode_file`."""
+    import json
+
+    with open(path) as f:
+        data = json.load(f)
+    edges = data.get("edges", data) if isinstance(data, dict) else data
+    return await aencode(
+        edges, license_key=license_key, api_url=api_url, timeout=timeout, cache=cache
+    )
+
+
+async def aencode_diff(
+    edges_before: list,
+    edges_after: list,
+    *,
+    detail: bool = True,
+    license_key: str | None = None,
+    api_url: str | None = None,
+    timeout: float = 60.0,
+    cache: bool = False,
+) -> dict[str, dict[str, dict[str, float]]]:
+    """Async version of :func:`encode_diff`. Issues both encodes in parallel."""
+    import asyncio
+
+    before_t, after_t = await asyncio.gather(
+        aencode(edges_before, license_key=license_key, api_url=api_url,
+                timeout=timeout, cache=cache),
+        aencode(edges_after, license_key=license_key, api_url=api_url,
+                timeout=timeout, cache=cache),
+    )
+    return drift(before_t, after_t, detail=detail)

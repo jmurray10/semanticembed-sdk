@@ -2,6 +2,16 @@
 
 All notable changes to the SemanticEmbed SDK.
 
+## 0.7.1 — Async surface
+
+- New: `aencode`, `aencode_file`, `aencode_diff` — async siblings of the
+  sync versions. Same preflight node-count guard, retry-once-on-5xx, and
+  optional in-process cache.
+- Cache is **shared** across sync + async: a sync `encode(edges, cache=True)`
+  followed by `await aencode(edges, cache=True)` hits the same entry.
+- `aencode_diff` issues both encodes in parallel via `asyncio.gather`.
+- Useful for FastAPI / Celery / event-loop integrations.
+
 ## 0.7.0 — Honeycomb + Datadog live connectors
 
 - New: `semanticembed.live.from_honeycomb(dataset, api_key)` — runs a
