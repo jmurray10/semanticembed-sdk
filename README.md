@@ -1,64 +1,58 @@
 # SemanticEmbed SDK
 
+[![PyPI](https://img.shields.io/pypi/v/semanticembed.svg)](https://pypi.org/project/semanticembed/)
+[![Python](https://img.shields.io/pypi/pyversions/semanticembed.svg)](https://pypi.org/project/semanticembed/)
+[![License](https://img.shields.io/badge/license-Proprietary-blue.svg)](LICENSE)
+[![Patent Pending](https://img.shields.io/badge/patent-%2363%2F994%2C075-orange.svg)](#)
+[![Changelog](https://img.shields.io/badge/changelog-keep%20a%20changelog-success.svg)](CHANGELOG.md)
+
 **Structural intelligence for directed graphs. Six numbers per node. Sub-millisecond.**
 
-SemanticEmbed computes a 6-dimensional structural encoding for every node in a directed graph. From a bare edge list -- no runtime telemetry, no historical data, no tuning -- it produces six independent measurements that fully describe each node's structural role.
+SemanticEmbed computes a 6-dimensional structural encoding for every node in a directed graph. From a bare edge list — no runtime telemetry, no historical data, no tuning — it produces six independent measurements that fully describe each node's structural role.
 
-> **Validated against production incidents.** In a blind test against a live production environment (100+ services, 2,500+ incidents over 30 days), the majority of topology-relevant incidents occurred on nodes that 6D structural analysis had flagged as risky -- from the call graph alone, before any incident occurred.
+> **Validated against production incidents.** In a blind test against a live production Dynatrace environment (108 services, 569 topology-relevant incidents over 30 days), **79.6%** of incidents (453/569) occurred on nodes that 6D structural analysis had flagged as risky — from the call graph alone, before any incident occurred. Full reproduction script available in the private repo.
 
 ---
 
 ## Why 6D?
 
-Observability tools tell you **what broke**. SemanticEmbed tells you **what will break** -- from topology alone.
+Observability tools tell you **what broke**. SemanticEmbed tells you **what will break** — from topology alone.
 
-- **No agents, no instrumentation** -- just an edge list
-- **Sub-millisecond** -- encodes 100+ node graphs in <1ms
-- **Works on any directed graph** -- microservices, AI agent pipelines, data workflows, CI/CD
-- **Complementary structural axes** -- six dimensions, each captures risk signals the others cannot
-
----
-
-## Try It Now
-
-**[Open the Interactive Demo in Google Colab](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/01_quickstart.ipynb)** -- runs in your browser, nothing to install locally.
+- **No agents, no instrumentation** — just an edge list
+- **Sub-millisecond** — encodes 100+ node graphs in <1ms
+- **Works on any directed graph** — microservices, AI agent pipelines, data workflows, CI/CD
+- **Complementary structural axes** — six dimensions, each captures risk signals the others cannot
+- **14 deterministic edge parsers + 3 live connectors** — go from real infra to encoded result in 2 lines
 
 ---
 
 ## Install
 
 ```bash
-pip install semanticembed
+pip install semanticembed              # core
+pip install 'semanticembed[extract]'   # adds pyyaml for k8s/CFN/CDK parsing
+pip install 'semanticembed[agent-claude]'  # adds Claude agent CLI
 ```
 
-**Free tier:** Up to 50 nodes per graph. No signup required.
+**Free tier:** up to 50 nodes per graph, no signup. **Latest:** `0.7.2` ([CHANGELOG](CHANGELOG.md))
 
 ---
 
-## Quick Start
+## Quick Start — from real infra to risk in 2 lines
 
 ```python
-from semanticembed import encode, report
+import semanticembed as se
 
-# Any directed graph as an edge list
-edges = [
-    ("frontend", "api-gateway"),
-    ("api-gateway", "order-service"),
-    ("api-gateway", "user-service"),
-    ("order-service", "payment-service"),
-    ("order-service", "inventory-service"),
-    ("payment-service", "database"),
-]
+# Auto-discover edges from any directory: docker-compose, k8s, terraform,
+# CloudFormation, AWS CDK, Pulumi, GitHub Actions, package.json,
+# pyproject.toml, OTel traces, Python imports, LangGraph, CrewAI, AutoGen.
+edges, sources = se.extract.from_directory(".")
+print(f"Found {len(edges)} edges from {sources}")
 
-# Compute the 6D encoding (sub-millisecond)
-result = encode(edges)
-
-# Six structural measurements per node
-for node, vector in result.vectors.items():
-    print(f"{node}: {vector}")
-
-# Structural risk report
-print(report(result))
+# 6D encode + structural risk analysis (sub-millisecond on the server side).
+result = se.encode(edges)
+print(result.table)
+print(se.report(result))
 ```
 
 Output:
@@ -76,6 +70,8 @@ CONVERGENCE SINKS (low independence, many upstream callers):
 STRUCTURAL SPOF (low independence, high upstream dependency):
   - api-gateway    | independence=0.000 | every request flows through this node
 ```
+
+**Or try it without installing** — [open the Quickstart in Google Colab](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/01_quickstart.ipynb).
 
 ---
 
@@ -119,6 +115,22 @@ See [docs/dimensions.md](docs/dimensions.md) for the full reference.
 **CI/CD and data pipelines** -- Detect structural fragility in build graphs, ETL workflows, and deployment pipelines before they cause cascading failures.
 
 **Architecture drift monitoring** -- Compare structural fingerprints across releases. Know exactly which services changed structural role and by how much.
+
+---
+
+## What's new in v0.7
+
+- **`live.from_dynatrace` / `from_honeycomb` / `from_datadog`** — pull real call edges from running infra (v0.5–v0.7)
+- **OpenTelemetry trace ingestion** — auto-detects OTLP / Jaeger / Zipkin (v0.3)
+- **AI agent framework parsers** — `from_langgraph`, `from_crewai`, `from_autogen`, AST-only, no need to install the framework (v0.4)
+- **IaC parsers** — CloudFormation, AWS CDK (Python), Pulumi (Python) (v0.6)
+- **Async surface** — `await aencode(...)`, `aencode_diff()` runs both encodes in parallel (v0.7.1)
+- **`encode(cache=True)`** — skip the HTTP round trip on repeat calls (v0.4.1)
+- **`dedupe_edges`** — canonicalize names when blending multiple sources (v0.3)
+- **One-retry-on-5xx** — every connector handles transient failures (v0.7.2)
+- **`semanticembed-agent` console script** — interactive shell for non-programmer users (v0.5.1)
+
+Full details in the [CHANGELOG](CHANGELOG.md).
 
 ---
 
@@ -355,7 +367,11 @@ If your topology is sensitive, prefer the skill (local Ollama) or pre-extract ed
 
 ## Example Graphs
 
-The `examples/` directory contains edge lists for well-known architectures:
+The `examples/` directory contains ready-to-encode edge lists and parsable
+framework files. None of the `.py` examples need to be runnable — the SDK
+parses them via AST without importing the framework.
+
+**Edge-list JSON** — load with `se.encode_file(path)`:
 
 | File | Application | Nodes | Edges |
 |------|------------|-------|-------|
@@ -363,6 +379,15 @@ The `examples/` directory contains edge lists for well-known architectures:
 | [weaveworks_sock_shop.json](examples/weaveworks_sock_shop.json) | Weaveworks Sock Shop (microservices) | 15 | 15 |
 | [ai_agent_pipeline.json](examples/ai_agent_pipeline.json) | Multi-agent LLM orchestration | 12 | 15 |
 | [cicd_pipeline.json](examples/cicd_pipeline.json) | CI/CD build pipeline | 13 | 17 |
+| [sample_pipeline.json](examples/sample_pipeline.json) | Minimal 7-node starter | 7 | 8 |
+
+**AI-framework Python sources** — parse with the matching extractor:
+
+| File | Extractor | Edges |
+|------|-----------|-------|
+| [langgraph_research_agent.py](examples/langgraph_research_agent.py) | `from_langgraph` | 6 |
+| [crewai_content_pipeline.py](examples/crewai_content_pipeline.py) | `from_crewai` | 11 |
+| [autogen_codereview.py](examples/autogen_codereview.py) | `from_autogen` | 5 |
 
 ---
 
