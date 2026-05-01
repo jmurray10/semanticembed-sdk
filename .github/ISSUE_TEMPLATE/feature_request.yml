@@ -1,0 +1,48 @@
+name: Feature request
+description: Request a new parser, live connector, or SDK improvement.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Best fits for new features:
+        - **New `extract.from_*` parsers** — additional infrastructure formats, AI agent frameworks
+        - **New `live.from_*` connectors** — observability platforms (Lightstep, AppDynamics, New Relic, etc.)
+        - **Client improvements** — async, batching, caching, error handling
+
+        For changes to the encoding algorithm, risk thresholds, or scoring rules, please email
+        jeffmurr@seas.upenn.edu instead — those run server-side.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of feature?
+      options:
+        - New extract.from_* parser
+        - New live.from_* connector
+        - Async / batching / caching improvement
+        - Error handling / retry behavior
+        - Documentation / example
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use case
+      description: What problem are you trying to solve? What's blocking you today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: api_sketch
+    attributes:
+      label: Proposed API (optional)
+      description: A rough sketch of how you'd want to call it.
+      render: python
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered

@@ -1,0 +1,10 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Algorithm / encoding / scoring questions
+    url: mailto:jeffmurr@seas.upenn.edu
+    about: |
+      The 6D encoding algorithm runs server-side and isn't part of this repository.
+      Email directly for questions about encoding math, risk thresholds, or scoring rules.
+  - name: License / commercial inquiries
+    url: mailto:jeffmurr@seas.upenn.edu
+    about: Pricing, paid-tier license keys, and commercial use questions.

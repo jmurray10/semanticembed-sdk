@@ -6,7 +6,7 @@ Complete reference for the `semanticembed` Python SDK.
 
 ## Functions
 
-### `encode(edges, *, license_key=None, api_url=None, timeout=60.0)`
+### `encode(edges, *, license_key=None, api_url=None, timeout=60.0, cache=False)`
 
 Encode a directed graph and return 6D structural coordinates.
 
@@ -17,7 +17,13 @@ Encode a directed graph and return 6D structural coordinates.
 | `edges` | `list` | required | Edge list. Accepts tuples `("A", "B")`, lists `["A", "B"]`, or dicts `{"source": "A", "target": "B"}` |
 | `license_key` | `str` | `None` | API key for paid tier. If not provided, checks module attribute, env var, then config file. |
 | `api_url` | `str` | `None` | Override API endpoint (for testing). Default: SemanticEmbed cloud API. |
-| `timeout` | `float` | `30.0` | Request timeout in seconds. |
+| `timeout` | `float` | `60.0` | Request timeout in seconds. |
+| `cache` | `bool` | `False` | If `True`, store the result in an in-process LRU keyed on the order-independent edge set. Repeat calls return immediately without an HTTP round trip. Cache is shared with `aencode`. |
+
+**Behavior:**
+
+- **Pre-flight node-count guard:** if no license key is set and the graph has more than 50 nodes, raises `NodeLimitError` *before* the HTTP call.
+- **Retry-once on transient failures:** 502, 503, 504, `ConnectError`, `ReadTimeout` retry once with 0.5 s backoff. 4xx errors propagate immediately.
 
 **Returns:** `SemanticResult`
 
@@ -127,6 +133,82 @@ changes = drift(v1, v2)
 for node, deltas in changes.items():
     print(f"{node}: {deltas}")
 # payment: {'throughput': 0.058, 'fanout': -0.167}
+```
+
+---
+
+### `aencode(edges, *, license_key=None, api_url=None, timeout=60.0, cache=False)`
+
+Async version of `encode`. Same preflight node-count guard, same retry-once
+on transient failures, same optional cache (shared with the sync side).
+
+```python
+import asyncio, semanticembed as se
+
+async def main():
+    result = await se.aencode([("a", "b"), ("b", "c")], cache=True)
+    print(result.table)
+
+asyncio.run(main())
+```
+
+---
+
+### `aencode_file(path, *, license_key=None, api_url=None, timeout=60.0, cache=False)`
+
+Async version of `encode_file`.
+
+---
+
+### `aencode_diff(before, after, *, detail=True, license_key=None, api_url=None, timeout=60.0, cache=False)`
+
+Async version of `encode_diff`. Issues both encodes in parallel via
+`asyncio.gather`, halving wall time on cold starts.
+
+---
+
+### `clear_encode_cache()`
+
+Empty the in-process encode result cache (used by both `encode(cache=True)`
+and `aencode(cache=True)`). The cache holds at most 64 entries with LRU
+eviction.
+
+---
+
+### `find_edges(path=".", *, provider="claude", model=None, api_key=None, max_nodes=None)`
+
+Programmatic agent hook — runs `extract.from_directory(path)` first
+(deterministic, no LLM, no network egress beyond the encode call). If no
+edges are found, falls through to a Claude or Gemini call that reads the
+files and produces an edge list.
+
+**Returns** `(edges, sources, log)` — the same `(edges, sources)` shape as
+`from_directory`, plus a list of strings describing the steps taken.
+
+---
+
+### `dedupe_edges(edges, *, normalize="none", aliases=None, drop_self_loops=True)`
+
+Canonicalize node names and remove duplicate edges. Use when blending
+extractor outputs (compose + traces + Python imports often produce the
+same logical service under several names).
+
+| `normalize` | Effect |
+|---|---|
+| `"none"` | Names unchanged; only exact duplicates merged. |
+| `"snake"` | `AuthService` / `auth-svc` → `auth_service` / `auth_svc`. |
+| `"lower"` | Lowercase only. |
+| `"kebab"` | Like `"snake"` but with dashes. |
+
+`aliases` is an explicit `{variant: canonical}` map applied AFTER
+normalization for cases where the rule isn't enough.
+
+```python
+edges = se.dedupe_edges(
+    list(compose_edges) + trace_edges,
+    normalize="snake",
+    aliases={"auth_svc": "auth_service"},
+)
 ```
 
 ---
@@ -347,6 +429,83 @@ Find inter-package dependency edges in a monorepo. Only includes edges between l
 edges = se.extract.from_package_json_workspaces(".")
 ```
 
+### `extract.from_cloudformation(path)`
+
+Parse a CloudFormation template (YAML or JSON). Honors explicit
+`DependsOn` lists plus implicit references via `Ref` / `Fn::GetAtt` /
+`Fn::Sub`. Pass a directory to merge edges across multiple templates.
+
+```python
+edges = se.extract.from_cloudformation("template.yaml")
+edges = se.extract.from_cloudformation("infra/")
+```
+
+---
+
+### `extract.from_aws_cdk(path)`
+
+Parse an AWS CDK Python file. Detects `aws_xxx.Class(self, "Id", ...)`
+constructor calls and emits an edge for every kwarg whose value is a
+previously-assigned construct variable. TypeScript CDK is not yet
+supported — convert to CFN with `cdk synth` and use `from_cloudformation`.
+
+---
+
+### `extract.from_pulumi(path)`
+
+Parse a Pulumi Python program. Same kwarg-reference logic as CDK, with
+the Pulumi resource shape `aws.x.Y("name", ...)` (string as first arg).
+
+---
+
+### `extract.from_otel_traces(path)`
+
+Parse OpenTelemetry trace JSON. Auto-detects OTLP, Jaeger, or Zipkin
+format. Emits edges at the **service level** — same-service spans roll
+up automatically.
+
+```python
+edges = se.extract.from_otel_traces("traces.json")
+```
+
+---
+
+### `extract.from_langgraph(path)`
+
+Parse a LangGraph workflow file via AST. Recognizes `add_edge`,
+`add_conditional_edges` (with explicit `path_map`), `set_entry_point`
+(emits `START -> X`), and `set_finish_point` (emits `X -> END`).
+
+---
+
+### `extract.from_crewai(path)`
+
+Parse a CrewAI script. Patterns: `Task(agent=X)` produces `X -> task_var`;
+`Task(context=[t1, t2])` produces `t1 -> task_var` / `t2 -> task_var`;
+`Crew(manager_agent=mgr)` adds `mgr -> agent` fan-out.
+
+---
+
+### `extract.from_autogen(path)`
+
+Parse a Microsoft AutoGen / AG2 script. `GroupChat(agents=[...])` with an
+explicit `GroupChatManager` produces a star (`manager -> a`); without a
+manager, fully connected. Plus `x.initiate_chat(y)` → `x -> y`.
+
+---
+
+### `extract.from_python_imports(path=".", *, depth=None)`
+
+Extract module dependency edges from import statements.
+
+| `depth` | Behavior |
+|---|---|
+| `None` (default) | Use the last component of each module path (e.g. `myapp.auth.user` → `user`). |
+| `1` | Top-level package only. |
+| `N` | First N path components — useful for `services/<svc>/...` monorepos at `depth=2`. |
+
+---
+
 ### `extract.from_directory(path=".")`
 
 Auto-detect and parse all recognized formats in a directory.
@@ -380,3 +539,45 @@ edges = [
 ```
 
 Dict keys accepted: `source`/`src`/`from` and `target`/`tgt`/`to`.
+
+---
+
+## `live` Module — Live Observability Connectors
+
+Unlike `extract.*` which parses local files, `live.*` makes outbound HTTP
+requests to third-party APIs. Same return shape: `list[tuple[str, str]]`.
+Each connector retries once on 502/503/504/`ConnectError`/`ReadTimeout`
+with a 0.5 s backoff.
+
+### `live.from_dynatrace(env_url=None, *, api_token=None, timeout=30.0)`
+
+Pull service-to-service edges from Smartscape via the Dynatrace
+Environment API v2. Falls back to `DYNATRACE_ENV_URL` /
+`DYNATRACE_API_TOKEN` env vars.
+
+```python
+from semanticembed import live
+edges = live.from_dynatrace(
+    env_url="https://abc12345.live.dynatrace.com",
+    api_token=os.environ["DYNATRACE_API_TOKEN"],
+)
+```
+
+---
+
+### `live.from_honeycomb(dataset=None, *, api_key=None, api_url="https://api.honeycomb.io", lookback_seconds=3600, max_spans=10_000, timeout=60.0)`
+
+Issue a Honeycomb Query API request that breaks down spans by
+`trace.span_id` / `trace.parent_id` / `service.name`, then derives
+parent-child service edges. Override `api_url` for EU tenants
+(`https://api.eu1.honeycomb.io`). Falls back to `HONEYCOMB_DATASET` /
+`HONEYCOMB_API_KEY`.
+
+---
+
+### `live.from_datadog(*, api_key=None, app_key=None, site="datadoghq.com", lookback="now-1h", max_spans=1000, env=None, service=None, timeout=30.0)`
+
+Call the Datadog Spans Search API and derive edges from `parent_id`
+references. Optional `env` and `service` filters; `site` override for
+EU/US3/US5 tenants. Falls back to `DD_API_KEY` / `DD_APP_KEY` (also
+accepts `DATADOG_API_KEY` / `DATADOG_APP_KEY`).
