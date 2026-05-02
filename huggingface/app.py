@@ -335,7 +335,7 @@ def _mode_change(mode: str, current_code: str) -> tuple:
     )
 
 
-with gr.Blocks(title="SemanticEmbed — AI Agent Topology Risk") as demo:
+with gr.Blocks(title="SemanticEmbed — AI Agent Topology Risk", css=CSS) as demo:
     gr.Markdown(INTRO_MD)
 
     with gr.Row():
@@ -387,4 +387,4 @@ Patent pending · Application #63/994,075
 
 
 if __name__ == "__main__":
-    demo.launch(css=CSS)
+    demo.launch()

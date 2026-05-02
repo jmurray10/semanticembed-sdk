@@ -1,3 +1,3 @@
-gradio>=5.0,<6
+gradio>=5.30,<6
 semanticembed[extract]>=0.7.2
 pandas>=2.0
