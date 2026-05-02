@@ -2,6 +2,25 @@
 
 All notable changes to the SemanticEmbed SDK.
 
+## 0.7.3 — Modern AutoGen + lenient edge parser
+
+- `from_autogen` now recognizes the autogen-agentchat 0.4+ patterns:
+  `RoundRobinGroupChat([...])` (chain), `SelectorGroupChat([...])` (fully
+  connected), `Swarm([...])` (fully connected), and
+  `MagenticOneGroupChat([...])`. The legacy `GroupChat` + optional
+  `GroupChatManager` paths still work.
+- `from_directory` auto-detects autogen-agentchat / autogen-core /
+  autogen-ext imports as well as the legacy `autogen` and `ag2` names.
+- HF Space (`huggingface/app.py`):
+  - Edge-list parser now tolerates BOM, smart quotes, tabs / pipes /
+    semicolons as delimiters, comment lines, and arrow-list syntax
+    (`a -> b`, `a => b`, `a → b`).
+  - "No edges extracted" error is now mode-specific: lists exactly which
+    patterns the LangGraph / CrewAI / AutoGen parser detects, with a
+    pointer to the Edge-list mode as the fallback.
+- README + Space landing copy: "Live dashboard" → "Demo dashboard"
+  (more accurate framing — it's a demo, not a production tool).
+
 ## 0.7.2 — Live-connector retry
 
 - All three live connectors (`from_dynatrace`, `from_honeycomb`, `from_datadog`)

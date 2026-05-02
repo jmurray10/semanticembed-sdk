@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 
@@ -76,41 +77,77 @@ LANGUAGE_BY_KIND = {
 
 
 def _parse_edges_text(text: str) -> list[tuple[str, str]]:
-    """Accept JSON `{"edges": [...]}` / `[[s,t],...]` / CSV `from,to`."""
-    text = text.strip()
-    if not text:
-        raise ValueError("Empty input.")
+    """Accept JSON `{"edges": [...]}` / `[[s,t],...]` / CSV / arrow-list.
 
-    # JSON path
+    Lenient: tolerates leading whitespace, BOM, smart quotes from copy-paste,
+    common arrow-list syntax (`a -> b`), and tabs / semicolons / pipes as
+    delimiters. Falls back through several formats before erroring.
+    """
+    # Strip BOM + normalize smart quotes (common copy-paste artifact)
+    text = text.lstrip("﻿").strip()
+    if not text:
+        raise ValueError("Empty input. Paste an edge list (JSON or CSV) or pick an example.")
+    # Replace smart / typographic quotes with ASCII so json.loads works
+    text = (text
+            .replace("“", '"').replace("”", '"')
+            .replace("‘", "'").replace("’", "'"))
+
+    # Path 1: JSON
     if text.startswith(("{", "[")):
-        payload = json.loads(text)
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"Looks like JSON but failed to parse: {e.msg} (line {e.lineno}, col {e.colno}). "
+                "Expected `{\"edges\": [[\"a\",\"b\"], ...]}` or just `[[\"a\",\"b\"], ...]`."
+            )
         edges = payload["edges"] if isinstance(payload, dict) and "edges" in payload else payload
         if not isinstance(edges, list):
-            raise ValueError("Expected a list of edges or `{\"edges\": [...]}`.")
+            raise ValueError("JSON parsed but the top-level value isn't an edge list.")
         out: list[tuple[str, str]] = []
         for i, e in enumerate(edges):
             if isinstance(e, dict):
                 s = e.get("source") or e.get("src") or e.get("from")
                 t = e.get("target") or e.get("tgt") or e.get("to")
                 if not s or not t:
-                    raise ValueError(f"Edge {i}: dict needs `source` and `target`.")
+                    raise ValueError(f"Edge {i}: dict needs `source`+`target` (or `from`+`to`).")
                 out.append((str(s), str(t)))
             elif isinstance(e, (list, tuple)) and len(e) >= 2:
                 out.append((str(e[0]), str(e[1])))
             else:
-                raise ValueError(f"Edge {i}: expected [source, target].")
+                raise ValueError(f"Edge {i}: expected `[source, target]`.")
         return out
 
-    # CSV path
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    # Path 2: arrow list (`a -> b`, `a => b`, `a → b`) — common when users
+    # paste from architecture docs or whiteboard photos
+    arrow = re.compile(r"^\s*(\S.*?)\s*(?:->|=>|→|—>|--)\s*(\S.*?)\s*$")
+    arrow_lines = [m.groups() for m in (arrow.match(ln) for ln in text.splitlines()) if m]
+    if arrow_lines:
+        return [(s.strip().rstrip(",;"), t.strip().rstrip(",;")) for s, t in arrow_lines]
+
+    # Path 3: delimited (CSV / TSV / pipe / semicolon)
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
     if not lines:
         raise ValueError("No edges in input.")
-    start = 1 if lines[0].lower().startswith(("from,", "source,")) else 0
+    # Pick the most-likely delimiter from the first line
+    first = lines[0]
+    # Skip a header row
+    skip_header = first.lower().startswith(("from,", "source,", "from\t", "source\t"))
+    sample = lines[1 if skip_header and len(lines) > 1 else 0]
+    delim = ","
+    for d in (",", "\t", "|", ";"):
+        if d in sample:
+            delim = d
+            break
     out2: list[tuple[str, str]] = []
-    for i, line in enumerate(lines[start:], start=start + 1):
-        cols = [c.strip() for c in line.split(",")]
+    for i, line in enumerate(lines[1 if skip_header else 0:], start=2 if skip_header else 1):
+        cols = [c.strip() for c in line.split(delim)]
         if len(cols) < 2:
-            raise ValueError(f"Line {i}: expected `from,to[,weight]`.")
+            raise ValueError(
+                f"Line {i}: couldn't find two columns. "
+                "Accepted formats: JSON (`{\"edges\":[[\"a\",\"b\"]]}`), "
+                "CSV (`a,b`), TSV, pipe (`a|b`), or arrow list (`a -> b`)."
+            )
         out2.append((cols[0], cols[1]))
     return out2
 
@@ -248,10 +285,35 @@ def analyze(mode: str, code: str, example_label: str):
         return _empty_state(f"**Parser error.**\n\n`{type(e).__name__}: {e}`")
 
     if not edges:
+        hint = {
+            "langgraph": (
+                "**LangGraph** parser looks for: `g.add_edge(\"x\", \"y\")`, "
+                "`g.add_conditional_edges(\"x\", router, {\"a\": \"y\", ...})`, "
+                "`g.set_entry_point(...)`, `g.set_finish_point(...)`. "
+                "Make sure your file has explicit calls (not just `compile()` of a pre-built graph)."
+            ),
+            "crewai": (
+                "**CrewAI** parser looks for: `Task(agent=X)` (emits agent → task), "
+                "`Task(context=[t1, t2])` (task→task dependency), "
+                "and `Crew(manager_agent=mgr)` (manager fan-out). "
+                "Make sure agents and tasks are top-level variable assignments."
+            ),
+            "autogen": (
+                "**AutoGen** parser supports: legacy `GroupChat([...])` + optional "
+                "`GroupChatManager`, modern `RoundRobinGroupChat` / `SelectorGroupChat` / "
+                "`Swarm` / `MagenticOneGroupChat`, and `x.initiate_chat(y, ...)`. "
+                "If you're using a different pattern, paste your edges directly via "
+                "the **Edge list** mode."
+            ),
+            "edges_json": (
+                "Couldn't find any edges. Accepted formats: JSON (`{\"edges\":[[\"a\",\"b\"], ...]}`), "
+                "CSV (`a,b` per line), TSV, pipe-separated, or arrow list (`a -> b`)."
+            ),
+        }.get(kind, "Couldn't extract edges from the input.")
         return _empty_state(
-            "No edges extracted from the input. "
-            "If this is a framework file, double-check that you pasted the actual graph "
-            "definition (e.g. `workflow.add_edge(...)` for LangGraph)."
+            f"**No edges extracted.** {hint}\n\n"
+            "Tip: switch to the **Edge list** mode and paste an explicit edge list "
+            "if your framework file uses a pattern we don't recognize yet."
         )
     if len(edges) < 2:
         return _empty_state(
@@ -298,7 +360,7 @@ bottlenecks, and guardrail SPOFs hide in the orchestration graph.
 
 [PyPI](https://pypi.org/project/semanticembed/) ·
 [GitHub](https://github.com/jmurray10/semanticembed-sdk) ·
-[Live dashboard](https://semanticembed-dashboard.vercel.app/) ·
+[Demo dashboard](https://semanticembed-dashboard.vercel.app/) ·
 [Validation methodology](https://github.com/jmurray10/semanticembed-sdk/blob/main/docs/validation_methodology.md)
 
 > Encoding runs server-side. The Space sends only the edge list — your

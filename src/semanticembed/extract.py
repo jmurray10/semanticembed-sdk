@@ -1162,20 +1162,25 @@ def from_crewai(path: str) -> list[tuple[str, str]]:
 
 
 def from_autogen(path: str) -> list[tuple[str, str]]:
-    """Extract edges from a Microsoft AutoGen / AG2 script.
+    """Extract edges from a Microsoft AutoGen / AG2 / autogen-agentchat script.
 
-    Patterns:
+    Patterns recognized:
 
-    - ``user_proxy.initiate_chat(assistant, message=...)``
-        emits ``user_proxy -> assistant``
-    - ``GroupChat(agents=[a, b, c])`` (no explicit manager)
-        emits a fully-connected subgraph (``a -> b``, ``a -> c``, ``b -> a``, ...)
-        because every agent can address every other in the group
-    - ``GroupChatManager(groupchat=gc)`` paired with the GroupChat above
-        instead emits a star: ``manager -> a``, ``manager -> b``, ``manager -> c``
+    **Legacy AutoGen (autogen-core 0.2.x style):**
+
+    - ``GroupChat(agents=[a, b, c])`` (no explicit manager) → fully connected
+    - ``GroupChat(agents=[...])`` + ``GroupChatManager(groupchat=gc)`` → star (manager -> agents)
+    - ``user_proxy.initiate_chat(assistant, ...)`` → ``user_proxy -> assistant``
+
+    **Modern AutoGen (autogen-agentchat 0.4+):**
+
+    - ``RoundRobinGroupChat([a, b, c])`` → round-robin chain (a -> b -> c -> a)
+    - ``SelectorGroupChat([a, b, c], ...)`` → fully connected (selector picks any)
+    - ``Swarm([a, b, c], ...)`` → fully connected
+    - ``team.run(task=...)`` / ``team.run_stream(...)`` recognized but emit no edges
 
     Args:
-        path: Path to a Python file using autogen / ag2.
+        path: Path to a Python file using autogen / autogen-agentchat / ag2.
 
     Returns:
         Deduped list of edges. Node names are Python variable names.
@@ -1185,57 +1190,94 @@ def from_autogen(path: str) -> list[tuple[str, str]]:
 
     edges: list[tuple[str, str]] = []
 
-    # First pass: collect groupchat var -> [agent vars]
-    groupchats: dict[str, list[str]] = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Assign) and len(node.targets) == 1:
-            target = node.targets[0]
-            if not isinstance(target, ast.Name) or not isinstance(node.value, ast.Call):
-                continue
-            call = node.value
-            f = call.func
-            name_match = (
-                (isinstance(f, ast.Name) and f.id == "GroupChat")
-                or (isinstance(f, ast.Attribute) and f.attr == "GroupChat")
-            )
-            if not name_match:
-                continue
-            kwargs = _kwargs(call)
-            agents_node = kwargs.get("agents")
-            if isinstance(agents_node, (ast.List, ast.Tuple)):
-                names = [_ast_str_arg(a) for a in agents_node.elts]
-                groupchats[target.id] = [n for n in names if n]
+    def _name_or_attr(call: ast.Call, names: set[str]) -> bool:
+        f = call.func
+        if isinstance(f, ast.Name):
+            return f.id in names
+        if isinstance(f, ast.Attribute):
+            return f.attr in names
+        return False
 
-    # Map groupchat var -> manager var (if any)
+    def _agents_list(call: ast.Call) -> list[str]:
+        """Pull the agents list — either positional first arg or `agents=` kwarg."""
+        node = None
+        if call.args and isinstance(call.args[0], (ast.List, ast.Tuple)):
+            node = call.args[0]
+        else:
+            node = _kwargs(call).get("agents") or _kwargs(call).get("participants")
+        if not isinstance(node, (ast.List, ast.Tuple)):
+            return []
+        return [n for n in (_ast_str_arg(a) for a in node.elts) if n]
+
+    # First pass: collect every group-chat-style construct's agents list.
+    # Each entry: (var_name, agents, kind) where kind in
+    # {"legacy", "round_robin", "selector", "swarm"}.
+    groupchats: dict[str, tuple[list[str], str]] = {}
+    LEGACY = {"GroupChat"}
+    ROUND_ROBIN = {"RoundRobinGroupChat"}
+    SELECTOR = {"SelectorGroupChat", "MagenticOneGroupChat"}
+    SWARM = {"Swarm"}
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name) or not isinstance(node.value, ast.Call):
+            continue
+        call = node.value
+        if _name_or_attr(call, LEGACY):
+            agents = _agents_list(call)
+            if agents:
+                groupchats[target.id] = (agents, "legacy")
+        elif _name_or_attr(call, ROUND_ROBIN):
+            agents = _agents_list(call)
+            if agents:
+                groupchats[target.id] = (agents, "round_robin")
+        elif _name_or_attr(call, SELECTOR):
+            agents = _agents_list(call)
+            if agents:
+                groupchats[target.id] = (agents, "selector")
+        elif _name_or_attr(call, SWARM):
+            agents = _agents_list(call)
+            if agents:
+                groupchats[target.id] = (agents, "swarm")
+
+    # Pass 2: legacy GroupChatManager → star pattern
     chat_to_manager: dict[str, str] = {}
     for node in ast.walk(tree):
-        if isinstance(node, ast.Assign) and len(node.targets) == 1:
-            target = node.targets[0]
-            if not isinstance(target, ast.Name) or not isinstance(node.value, ast.Call):
-                continue
-            call = node.value
-            f = call.func
-            mgr_match = (
-                (isinstance(f, ast.Name) and f.id == "GroupChatManager")
-                or (isinstance(f, ast.Attribute) and f.attr == "GroupChatManager")
-            )
-            if not mgr_match:
-                continue
-            kwargs = _kwargs(call)
-            gc_node = kwargs.get("groupchat") or kwargs.get("group_chat")
-            gc_name = _ast_str_arg(gc_node) if gc_node else None
-            if gc_name and gc_name in groupchats:
-                chat_to_manager[gc_name] = target.id
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name) or not isinstance(node.value, ast.Call):
+            continue
+        call = node.value
+        if not _name_or_attr(call, {"GroupChatManager"}):
+            continue
+        kw = _kwargs(call)
+        gc_node = kw.get("groupchat") or kw.get("group_chat")
+        gc_name = _ast_str_arg(gc_node) if gc_node else None
+        if gc_name and gc_name in groupchats:
+            chat_to_manager[gc_name] = target.id
 
-    for chat, agents in groupchats.items():
-        manager = chat_to_manager.get(chat)
-        if manager:
-            for a in agents:
-                if a != manager:
-                    edges.append((manager, a))
-        else:
-            # No explicit manager — treat as fully connected (every agent can
-            # address every other).
+    # Emit edges based on chat kind
+    for chat, (agents, kind) in groupchats.items():
+        if kind == "legacy":
+            manager = chat_to_manager.get(chat)
+            if manager:
+                for a in agents:
+                    if a != manager:
+                        edges.append((manager, a))
+            else:
+                for a in agents:
+                    for b in agents:
+                        if a != b:
+                            edges.append((a, b))
+        elif kind == "round_robin":
+            # Round-robin: each agent addresses the next; last wraps to first.
+            for i in range(len(agents)):
+                edges.append((agents[i], agents[(i + 1) % len(agents)]))
+        elif kind in ("selector", "swarm"):
+            # Fully connected — selector or swarm can route between any pair.
             for a in agents:
                 for b in agents:
                     if a != b:
@@ -1386,7 +1428,7 @@ def from_directory(path: str = ".") -> tuple[list[tuple[str, str]], dict[str, in
     py_specs = (
         ("langgraph",   ("langgraph",),                          from_langgraph),
         ("crewai",      ("crewai",),                             from_crewai),
-        ("autogen",     ("autogen", "autogen_agentchat", "ag2"), from_autogen),
+        ("autogen",     ("autogen", "autogen_agentchat", "autogen_core", "autogen_ext", "ag2"), from_autogen),
         ("aws-cdk",     ("aws_cdk", "aws_cdk_lib"),              from_aws_cdk),
         ("pulumi",      ("pulumi",),                             from_pulumi),
     )

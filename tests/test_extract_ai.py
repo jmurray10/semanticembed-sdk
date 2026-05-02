@@ -113,6 +113,36 @@ class TestAutoGen:
         # initiate_chat
         assert ("user_proxy", "manager") in edges_set
 
+    def test_modern_round_robin_group_chat(self, tmp_path):
+        # autogen-agentchat 0.4+: RoundRobinGroupChat([a, b, c])
+        f = tmp_path / "rr.py"
+        f.write_text(textwrap.dedent("""
+            from autogen_agentchat.teams import RoundRobinGroupChat
+            team = RoundRobinGroupChat([alpha, beta, gamma])
+        """))
+        edges = extract.from_autogen(str(f))
+        # Round-robin chain: 3 agents -> 3 edges (a->b, b->c, c->a)
+        assert {tuple(e) for e in edges} == {("alpha", "beta"), ("beta", "gamma"), ("gamma", "alpha")}
+
+    def test_modern_selector_group_chat(self, tmp_path):
+        f = tmp_path / "sel.py"
+        f.write_text(textwrap.dedent("""
+            from autogen_agentchat.teams import SelectorGroupChat
+            team = SelectorGroupChat([planner, coder, reviewer], model_client=mc)
+        """))
+        edges = extract.from_autogen(str(f))
+        # Selector can route between any pair -> fully connected (6 edges)
+        assert len({tuple(e) for e in edges}) == 6
+
+    def test_modern_swarm(self, tmp_path):
+        f = tmp_path / "sw.py"
+        f.write_text(textwrap.dedent("""
+            from autogen_agentchat.teams import Swarm
+            swarm = Swarm([researcher, writer, editor])
+        """))
+        edges = extract.from_autogen(str(f))
+        assert len({tuple(e) for e in edges}) == 6
+
     def test_groupchat_without_manager_is_fully_connected(self, tmp_path):
         f = tmp_path / "ag.py"
         f.write_text(textwrap.dedent("""

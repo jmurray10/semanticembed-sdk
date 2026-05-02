@@ -86,7 +86,7 @@ Full methodology: [docs/validation_methodology.md](https://github.com/jmurray10/
 
 - [PyPI: `semanticembed`](https://pypi.org/project/semanticembed/)
 - [GitHub: `jmurray10/semanticembed-sdk`](https://github.com/jmurray10/semanticembed-sdk)
-- [Live dashboard (with auth)](https://semanticembed-dashboard.vercel.app/)
+- [Demo dashboard (auth required)](https://semanticembed-dashboard.vercel.app/)
 - [Validation methodology](https://github.com/jmurray10/semanticembed-sdk/blob/main/docs/validation_methodology.md)
 - [License FAQ](https://github.com/jmurray10/semanticembed-sdk/blob/main/LICENSE-FAQ.md)
 
