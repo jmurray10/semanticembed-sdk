@@ -2,15 +2,24 @@
 
 [![PyPI](https://img.shields.io/pypi/v/semanticembed.svg)](https://pypi.org/project/semanticembed/)
 [![Python](https://img.shields.io/pypi/pyversions/semanticembed.svg)](https://pypi.org/project/semanticembed/)
+[![CI](https://github.com/jmurray10/semanticembed-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/jmurray10/semanticembed-sdk/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Proprietary-blue.svg)](LICENSE)
-[![Patent Pending](https://img.shields.io/badge/patent-%2363%2F994%2C075-orange.svg)](#)
-[![Changelog](https://img.shields.io/badge/changelog-keep%20a%20changelog-success.svg)](CHANGELOG.md)
+[![Patent Pending](https://img.shields.io/badge/patent-%2363%2F994%2C075-orange.svg)](LICENSE-FAQ.md#patent)
+[![Changelog](https://img.shields.io/badge/changelog-current-success.svg)](CHANGELOG.md)
 
-**Structural intelligence for directed graphs. Six numbers per node. Sub-millisecond.**
+**Structural risk for directed graphs — especially AI agent pipelines.** Six numbers per node. Sub-millisecond.
 
 SemanticEmbed computes a 6-dimensional structural encoding for every node in a directed graph. From a bare edge list — no runtime telemetry, no historical data, no tuning — it produces six independent measurements that fully describe each node's structural role.
 
-> **Validated against production incidents.** In a blind test against a live production Dynatrace environment (108 services, 569 topology-relevant incidents over 30 days), **79.6%** of incidents (453/569) occurred on nodes that 6D structural analysis had flagged as risky — from the call graph alone, before any incident occurred. Full reproduction script available in the private repo.
+**Designed for the topologies traditional observability misses:**
+
+- **AI agent pipelines** — vendor concentration, gateway bottlenecks, guardrail SPOFs in LangGraph / CrewAI / AutoGen workflows
+- **Microservices** — SPOFs, amplification cascades, convergence sinks across compose / k8s / Istio
+- **CI/CD and data pipelines** — build graph fragility, ETL bottlenecks, drift gates
+
+> **Live demo:** [semanticembed-dashboard.vercel.app](https://semanticembed-dashboard.vercel.app/) — encode your own graph against the production API in your browser, no install.
+
+> **Validated against production incidents.** In a blind test against a live production Dynatrace environment (108 services, 569 topology-relevant incidents over 30 days), **79.6%** of incidents (453/569) occurred on nodes that 6D structural analysis had flagged as risky — from the call graph alone, before any incident occurred. See [validation methodology](docs/validation_methodology.md).
 
 ---
 
@@ -20,7 +29,7 @@ Observability tools tell you **what broke**. SemanticEmbed tells you **what will
 
 - **No agents, no instrumentation** — just an edge list
 - **Sub-millisecond** — encodes 100+ node graphs in <1ms
-- **Works on any directed graph** — microservices, AI agent pipelines, data workflows, CI/CD
+- **Works on any directed graph** — AI agent pipelines, microservices, data workflows, CI/CD
 - **Complementary structural axes** — six dimensions, each captures risk signals the others cannot
 - **14 deterministic edge parsers + 3 live connectors** — go from real infra to encoded result in 2 lines
 
@@ -34,7 +43,7 @@ pip install 'semanticembed[extract]'   # adds pyyaml for k8s/CFN/CDK parsing
 pip install 'semanticembed[agent-claude]'  # adds Claude agent CLI
 ```
 
-**Free tier:** up to 50 nodes per graph, no signup. **Latest:** `0.7.2` ([CHANGELOG](CHANGELOG.md))
+**Free tier:** up to 50 nodes per graph, no signup. See [CHANGELOG](CHANGELOG.md) for what's new.
 
 ---
 
@@ -461,8 +470,11 @@ See [docs/input_format.md](docs/input_format.md) for the full spec.
 
 ## License
 
-SemanticEmbed SDK is proprietary software distributed as a compiled package.
-Free tier available for graphs up to 50 nodes. See [LICENSE](LICENSE) for terms.
+SemanticEmbed SDK is **proprietary software with public source code** —
+the same model Stripe, Snowflake, and Anthropic use for their SDKs. Free
+tier covers graphs up to 50 nodes; paid tier unlocks larger graphs and
+continuous monitoring. See [LICENSE](LICENSE) and [LICENSE-FAQ](LICENSE-FAQ.md)
+for terms and common questions.
 
 **Patent pending.** Application #63/994,075.
 
@@ -470,4 +482,11 @@ Free tier available for graphs up to 50 nodes. See [LICENSE](LICENSE) for terms.
 
 ## Contact
 
-Email jeffmurr@seas.upenn.edu
+Built by **Jeff Murray** ([@jmurray10](https://github.com/jmurray10)).
+
+- Email: **jeffmurr@seas.upenn.edu**
+- GitHub: [@jmurray10](https://github.com/jmurray10)
+- License inquiries, design partnerships, and YC/investor introductions: same email.
+
+For algorithm / encoding / scoring questions (server-side, not in this
+repo): same email — please put `[encoding]` in the subject line.
