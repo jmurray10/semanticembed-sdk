@@ -1,0 +1,21 @@
+{
+  "name": "Google Online Boutique",
+  "description": "Cloud-native e-commerce demo application with 11 microservices. Source: https://github.com/GoogleCloudPlatform/microservices-demo",
+  "edges": [
+    {"source": "frontend", "target": "ad-service"},
+    {"source": "frontend", "target": "cart-service"},
+    {"source": "frontend", "target": "checkout-service"},
+    {"source": "frontend", "target": "currency-service"},
+    {"source": "frontend", "target": "product-catalog-service"},
+    {"source": "frontend", "target": "recommendation-service"},
+    {"source": "frontend", "target": "shipping-service"},
+    {"source": "checkout-service", "target": "cart-service"},
+    {"source": "checkout-service", "target": "currency-service"},
+    {"source": "checkout-service", "target": "email-service"},
+    {"source": "checkout-service", "target": "payment-service"},
+    {"source": "checkout-service", "target": "product-catalog-service"},
+    {"source": "checkout-service", "target": "shipping-service"},
+    {"source": "recommendation-service", "target": "product-catalog-service"},
+    {"source": "cart-service", "target": "redis-cart"}
+  ]
+}

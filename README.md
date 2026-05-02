@@ -17,7 +17,9 @@ SemanticEmbed computes a 6-dimensional structural encoding for every node in a d
 - **Microservices** — SPOFs, amplification cascades, convergence sinks across compose / k8s / Istio
 - **CI/CD and data pipelines** — build graph fragility, ETL bottlenecks, drift gates
 
-> **Live demo:** [semanticembed-dashboard.vercel.app](https://semanticembed-dashboard.vercel.app/) — encode your own graph against the production API in your browser, no install.
+> **Live demos:**
+> - **[Hugging Face Space](https://huggingface.co/spaces/jmurray10/semanticembed-agent-risk)** — paste a LangGraph / CrewAI / AutoGen file, get the encoding + risk findings (zero install, ML-researcher framing).
+> - **[Vercel dashboard](https://semanticembed-dashboard.vercel.app/)** — encode any graph, full SRE-flavored UI.
 
 > **Validated against production incidents.** In a blind test against a live production Dynatrace environment (108 services, 569 topology-relevant incidents over 30 days), **79.6%** of incidents (453/569) occurred on nodes that 6D structural analysis had flagged as risky — from the call graph alone, before any incident occurred. See [validation methodology](docs/validation_methodology.md).
 
