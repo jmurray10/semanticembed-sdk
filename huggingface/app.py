@@ -35,28 +35,25 @@ from semanticembed.exceptions import (
 HERE = Path(__file__).parent
 EXAMPLES_DIR = HERE / "examples"
 
-# (label, kind, filename) — kind picks the parser at analyze time.
-EXAMPLES: list[tuple[str, str, str]] = [
-    ("LangGraph: research workflow (6 edges)", "langgraph", "langgraph_research.py"),
-    ("CrewAI: content pipeline (11 edges)",    "crewai",    "crewai_content.py"),
-    ("AutoGen: code review group chat (5 edges)", "autogen", "autogen_codereview.py"),
-    ("Edge list: Google Online Boutique (15 edges)", "edges_json", "boutique.json"),
-]
-EXAMPLE_LABELS = [label for label, _, _ in EXAMPLES]
-EXAMPLE_BY_LABEL = {label: (kind, fname) for label, kind, fname in EXAMPLES}
-
-
 MODE_LANGGRAPH = "LangGraph"
 MODE_CREWAI = "CrewAI"
 MODE_AUTOGEN = "AutoGen"
 MODE_EDGES = "Edge list (JSON or CSV)"
-MODE_EXAMPLE = "Try an example"
 
 MODE_TO_KIND = {
     MODE_LANGGRAPH: "langgraph",
     MODE_CREWAI: "crewai",
     MODE_AUTOGEN: "autogen",
     MODE_EDGES: "edges_json",
+}
+
+# Each mode has a starter file that loads into the code box on radio click.
+# Users edit/replace before clicking Analyze.
+STARTER_BY_MODE: dict[str, str] = {
+    MODE_LANGGRAPH: "langgraph_research.py",
+    MODE_CREWAI:    "crewai_content.py",
+    MODE_AUTOGEN:   "autogen_codereview.py",
+    MODE_EDGES:     "boutique.json",
 }
 
 PARSER_BY_KIND = {
@@ -167,22 +164,13 @@ def _parse_framework_code(code: str, kind: str) -> list[tuple[str, str]]:
             pass
 
 
-def _parse_input(mode: str, code: str, example_label: str) -> tuple[list[tuple[str, str]], str]:
+def _parse_input(mode: str, code: str) -> tuple[list[tuple[str, str]], str]:
     """Return (edges, kind) based on the radio mode."""
-    if mode == MODE_EXAMPLE:
-        if not example_label or example_label not in EXAMPLE_BY_LABEL:
-            raise ValueError("Pick an example from the dropdown.")
-        kind, fname = EXAMPLE_BY_LABEL[example_label]
-        loaded = (EXAMPLES_DIR / fname).read_text(encoding="utf-8")
-        if kind == "edges_json":
-            return _parse_edges_text(loaded), kind
-        return _parse_framework_code(loaded, kind), kind
-
     if mode not in MODE_TO_KIND:
         raise ValueError(f"Unknown mode: {mode!r}")
     kind = MODE_TO_KIND[mode]
     if not code or not code.strip():
-        raise ValueError("Paste a file or edge list, or pick an example.")
+        raise ValueError("Code box is empty. Click a mode radio button to load a starter, or paste your own.")
     if kind == "edges_json":
         return _parse_edges_text(code), kind
     return _parse_framework_code(code, kind), kind
@@ -274,9 +262,9 @@ def _empty_state(message: str) -> tuple[str, pd.DataFrame, str]:
 # --- Analyze (the click handler) ---------------------------------------------
 
 
-def analyze(mode: str, code: str, example_label: str):
+def analyze(mode: str, code: str):
     try:
-        edges, kind = _parse_input(mode, code, example_label)
+        edges, kind = _parse_input(mode, code)
     except (ValueError, json.JSONDecodeError) as e:
         return _empty_state(f"**Couldn't parse the input.**\n\n{e}")
     except SyntaxError as e:
@@ -350,10 +338,13 @@ def analyze(mode: str, code: str, example_label: str):
 INTRO_MD = """\
 # 🕸️ SemanticEmbed — AI Agent Topology Risk Analyzer
 
-Paste a **LangGraph**, **CrewAI**, or **AutoGen** Python file (or any
-directed-graph edge list) and get a **6D structural encoding** plus
+**Pick a mode → click Analyze.** Get a **6D structural encoding** plus
 risk findings — single points of failure, amplification cascades,
 convergence sinks — from topology alone.
+
+Each mode loads a starter example into the code box. Edit it, paste
+your own file over it, or just hit Analyze on the example to see what
+the output looks like.
 
 Designed for AI agent pipelines where vendor concentration, gateway
 bottlenecks, and guardrail SPOFs hide in the orchestration graph.
@@ -373,46 +364,39 @@ CSS = """
 """
 
 
-def _example_choice_change(mode: str, label: str) -> str:
-    """When the user picks an example, prefill the code box with its content."""
-    if mode != MODE_EXAMPLE or not label or label not in EXAMPLE_BY_LABEL:
-        return gr.update()
-    _, fname = EXAMPLE_BY_LABEL[label]
-    text = (EXAMPLES_DIR / fname).read_text(encoding="utf-8")
-    return text
+def _starter_for(mode: str) -> str:
+    """Read the starter file bundled for `mode`."""
+    fname = STARTER_BY_MODE.get(mode)
+    if not fname:
+        return ""
+    return (EXAMPLES_DIR / fname).read_text(encoding="utf-8")
 
 
-def _mode_change(mode: str, current_code: str) -> tuple:
-    """Switch the code editor's language and example dropdown visibility based on mode."""
-    if mode == MODE_EXAMPLE:
-        return (
-            gr.update(visible=True),
-            gr.update(language="python", interactive=True),
-        )
+def _on_mode_change(mode: str) -> tuple:
+    """Click a radio → switch editor language AND auto-load matching starter.
+
+    User flow: click radio → see code → click Analyze. Two clicks, done.
+    If the user wants their own code, they paste over the starter before
+    clicking Analyze.
+    """
     kind = MODE_TO_KIND.get(mode, "edges_json")
     lang = LANGUAGE_BY_KIND[kind]
-    return (
-        gr.update(visible=False, value=None),
-        gr.update(language=lang),
-    )
+    starter = _starter_for(mode)
+    return gr.update(language=lang, value=starter)
 
 
 with gr.Blocks(title="SemanticEmbed — AI Agent Topology Risk", css=CSS) as demo:
     gr.Markdown(INTRO_MD)
 
-    with gr.Row():
-        mode = gr.Radio(
-            choices=[MODE_LANGGRAPH, MODE_CREWAI, MODE_AUTOGEN, MODE_EDGES, MODE_EXAMPLE],
-            value=MODE_EXAMPLE,
-            label="Mode",
-            info="Pick what you have. Source files are parsed via AST locally — only the extracted edge list is sent to the encoding API.",
-        )
-
-    example_dd = gr.Dropdown(
-        choices=EXAMPLE_LABELS,
-        value=EXAMPLE_LABELS[0],
-        label="Example",
-        visible=True,
+    mode = gr.Radio(
+        choices=[MODE_LANGGRAPH, MODE_CREWAI, MODE_AUTOGEN, MODE_EDGES],
+        value=MODE_LANGGRAPH,
+        label="Mode",
+        info=(
+            "Pick what kind of input you have. The matching example loads "
+            "into the code box below — paste your own code over it, or leave "
+            "the example and click Analyze."
+        ),
     )
 
     code_box = gr.Code(
@@ -430,15 +414,15 @@ with gr.Blocks(title="SemanticEmbed — AI Agent Topology Risk", css=CSS) as dem
     gr.Markdown("### Structural risks")
     risks_md = gr.Markdown()
 
-    # Event wiring
-    mode.change(fn=_mode_change, inputs=[mode, code_box], outputs=[example_dd, code_box])
-    example_dd.change(fn=_example_choice_change, inputs=[mode, example_dd], outputs=code_box)
-    analyze_btn.click(fn=analyze, inputs=[mode, code_box, example_dd],
-                      outputs=[summary_md, table_out, risks_md])
+    # Event wiring: radio click -> reload starter for that mode + change language
+    mode.change(fn=_on_mode_change, inputs=mode, outputs=code_box)
+    analyze_btn.click(
+        fn=analyze, inputs=[mode, code_box],
+        outputs=[summary_md, table_out, risks_md],
+    )
 
-    # Prefill the code box with the first example on load.
-    demo.load(fn=lambda: _example_choice_change(MODE_EXAMPLE, EXAMPLE_LABELS[0]),
-              inputs=None, outputs=code_box)
+    # Prefill the code box with the LangGraph starter on first load.
+    demo.load(fn=lambda: _starter_for(MODE_LANGGRAPH), inputs=None, outputs=code_box)
 
     gr.Markdown("""
 ---
