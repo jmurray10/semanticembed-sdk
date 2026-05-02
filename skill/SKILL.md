@@ -103,9 +103,13 @@ Always show the user:
    the script doesn't generate prose.
 
 **Severity markers in the script's output:**
-- `!!!` critical (SPOF, criticality > 0.08)
+- `!!!` critical (server-classified — SPOF / monitoring gap)
 - `!! ` high (bottleneck, amplifier, concentration)
 - `!  ` medium / warning
+
+The classification thresholds run server-side; the SDK receives the
+severity label, never the threshold values. Trust the label, not a
+locally computed cutoff.
 
 **Risk flag meanings:**
 

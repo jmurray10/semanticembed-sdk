@@ -9,3 +9,14 @@ build/
 .venv/
 *.egg
 .ipynb_checkpoints/
+
+# Local-only artifacts at repo root (canonical files are in docs/ or examples/)
+/dimensions.md
+/encoding_output.json
+/*.html
+/*.pdf
+
+# Editor / OS noise
+.idea/
+.vscode/
+.DS_Store
