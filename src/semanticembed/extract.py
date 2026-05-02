@@ -12,6 +12,7 @@ Supported formats:
 
 from __future__ import annotations
 
+import ast
 import glob
 import os
 import re
@@ -581,7 +582,8 @@ def from_cloudformation(path: str) -> list[tuple[str, str]]:
         result = se.encode(edges)
     """
     files: list[str] = []
-    if os.path.isdir(path):
+    is_dir = os.path.isdir(path)
+    if is_dir:
         for ext in ("*.yaml", "*.yml", "*.json", "*.template"):
             files.extend(glob.glob(os.path.join(path, "**", ext), recursive=True))
     elif os.path.isfile(path):
@@ -589,6 +591,22 @@ def from_cloudformation(path: str) -> list[tuple[str, str]]:
 
     edges: list[tuple[str, str]] = []
     for fp in files:
+        # When scanning a directory we may pick up arbitrary YAML/JSON that isn't
+        # CFN — gate on a cheap header probe so we don't load every k8s manifest
+        # / service definition / npm config in the tree.
+        if is_dir:
+            try:
+                with open(fp, encoding="utf-8", errors="replace") as fh:
+                    head = fh.read(2048)
+            except OSError:
+                continue
+            if (
+                "AWSTemplateFormatVersion" not in head
+                and '"Resources"' not in head
+                and "\nResources:" not in head
+                and not head.lstrip().startswith("Resources:")
+            ):
+                continue
         try:
             doc = _load_cfn_doc(fp)
         except Exception:
@@ -977,8 +995,6 @@ def _otel_from_zipkin(spans: list) -> list[tuple[str, str]]:
 # All three parse Python source via `ast` only — they do NOT import the
 # framework being analyzed. That means the SDK works on a repo without
 # `pip install langgraph` etc.
-
-import ast
 
 
 def _ast_str_arg(node: ast.expr) -> str | None:

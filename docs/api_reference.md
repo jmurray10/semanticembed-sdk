@@ -137,6 +137,45 @@ for node, deltas in changes.items():
 
 ---
 
+### `explain(result, *, model, api_key=None)`
+
+Generate a plain-language explanation of the encoding output using your
+own LLM key. The function sends only the encoding output (vectors + risk
+report) to the LLM — never the algorithm, never your raw graph topology.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `result` | `SemanticResult` | required | Output of `encode()` / `aencode()`. |
+| `model` | `str` | required | Model identifier. Common forms: `"gpt-4o-mini"`, `"gpt-4o"`, `"claude-sonnet-4-5"`, `"claude-haiku"`, or `"ollama/<model>"` for a local Ollama instance. |
+| `api_key` | `str` | `None` | Provider API key. Required for OpenAI / Anthropic; optional for Ollama (uses local server). |
+
+**Returns:** `str` — natural-language summary, suitable for printing or piping to a chat UI.
+
+```python
+print(se.explain(result, model="gpt-4o-mini", api_key=os.environ["OPENAI_API_KEY"]))
+print(se.explain(result, model="ollama/llama3"))  # local, no key needed
+```
+
+---
+
+### `ask(result, question, *, model, api_key=None)`
+
+Follow-up Q&A on an encoding output. Same data-flow guarantee as
+`explain`: only the structural output is sent to the LLM.
+
+```python
+answer = se.ask(
+    result,
+    "What's the biggest single point of failure?",
+    model="gpt-4o-mini",
+    api_key=os.environ["OPENAI_API_KEY"],
+)
+```
+
+---
+
 ### `aencode(edges, *, license_key=None, api_url=None, timeout=60.0, cache=False)`
 
 Async version of `encode`. Same preflight node-count guard, same retry-once
@@ -397,16 +436,6 @@ Parse resource cross-references from `.tf` files.
 
 ```python
 edges = se.extract.from_terraform("infra/")
-```
-
-### `extract.from_python_imports(path=".")`
-
-Build a module dependency graph from Python import statements. Only includes edges between modules within the scanned directory.
-
-**Returns:** `list[tuple[str, str]]`
-
-```python
-edges = se.extract.from_python_imports("src/")
 ```
 
 ### `extract.from_package_json(path="package.json")`

@@ -48,29 +48,29 @@ export GOOGLE_API_KEY=...
 
 ```bash
 # Interactive — scans your project, explains risks, answers questions
-python -m agent
+semanticembed-agent
 
 # Analyze a specific project
-python -m agent /path/to/project
+semanticembed-agent /path/to/project
 
 # Single question
-python -m agent --ask "What is my biggest single point of failure?"
+semanticembed-agent --ask "What is my biggest single point of failure?"
 ```
 
 ### Gemini Agent
 
 ```bash
 # Interactive
-python -m agent.gemini_agent
+semanticembed-gemini-agent
 
 # Analyze a specific project
-python -m agent.gemini_agent /path/to/project
+semanticembed-gemini-agent /path/to/project
 
 # Single question
-python -m agent.gemini_agent --ask "What happens if the database goes down?"
+semanticembed-gemini-agent --ask "What happens if the database goes down?"
 
 # Use a different Gemini model
-python -m agent.gemini_agent --model gemini-2.5-pro
+semanticembed-gemini-agent --model gemini-2.5-pro
 ```
 
 Both agents have the same 7 tools and produce equivalent results — just different LLM backends.
@@ -110,7 +110,7 @@ The agent has 7 tools it calls autonomously:
 ## Example Session
 
 ```
-$ python -m agent
+$ semanticembed-agent
 
 SemanticEmbed Agent
 ========================================

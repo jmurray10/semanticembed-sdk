@@ -356,12 +356,12 @@ The agent has 7 tools: scan, extract (docker-compose, k8s, Python imports), enco
 
 Be explicit about data egress before pointing the agent at private architecture:
 
-- **Claude agent** (`python -m agent`): the LLM reads tool outputs as conversation context, so the contents of `docker-compose.yml`, Kubernetes manifests, Terraform `.tf` files, Python source, and `package.json` files in your project go to **Anthropic's API** along with your prompts. Conversation history is governed by Anthropic's data-use policies.
-- **Gemini agent** (`python -m agent.gemini_agent`): same data flow, sent to **Google's API** instead.
-- **Skill** (`skill/analyze.py`): runs **Ollama on your machine**. Raw input never leaves localhost unless you set `SEMBED_OLLAMA_URL` to a remote host.
+- **Claude agent** (`semanticembed-agent` / `python -m semanticembed.agent`): the LLM reads tool outputs as conversation context, so the contents of `docker-compose.yml`, Kubernetes manifests, Terraform `.tf` files, Python source, and `package.json` files in your project go to **Anthropic's API** along with your prompts. Conversation history is governed by Anthropic's data-use policies.
+- **Gemini agent** (`semanticembed-gemini-agent` / `python -m semanticembed.agent.gemini_agent`): same data flow, sent to **Google's API** instead.
+- **Claude Code skill** (`skill/analyze.py`): runs **inside Claude Code** — uses the parent agent for any natural-language extraction, the SDK for the deterministic scan + encoding. No second LLM, no Ollama dependency.
 - **Cloud `encode()` call**: only the **edge list** (node names, e.g. `["frontend", "auth"]`) goes to the SemanticEmbed Railway endpoint. File contents are never sent.
 
-If your topology is sensitive, prefer the skill (local Ollama) or pre-extract edges deterministically with `se.extract.from_directory()` and call `se.encode()` directly — that path sends only the edge list.
+If your topology is sensitive, pre-extract edges deterministically with `se.extract.from_directory()` and call `se.encode()` directly — that path sends only the edge list.
 
 ---
 
@@ -376,9 +376,9 @@ parses them via AST without importing the framework.
 | File | Application | Nodes | Edges |
 |------|------------|-------|-------|
 | [google_online_boutique.json](examples/google_online_boutique.json) | Google Online Boutique (microservices) | 11 | 15 |
-| [weaveworks_sock_shop.json](examples/weaveworks_sock_shop.json) | Weaveworks Sock Shop (microservices) | 15 | 15 |
+| [weaveworks_sock_shop.json](examples/weaveworks_sock_shop.json) | Weaveworks Sock Shop (microservices) | 14 | 15 |
 | [ai_agent_pipeline.json](examples/ai_agent_pipeline.json) | Multi-agent LLM orchestration | 12 | 15 |
-| [cicd_pipeline.json](examples/cicd_pipeline.json) | CI/CD build pipeline | 13 | 17 |
+| [cicd_pipeline.json](examples/cicd_pipeline.json) | CI/CD build pipeline | 12 | 17 |
 | [sample_pipeline.json](examples/sample_pipeline.json) | Minimal 7-node starter | 7 | 8 |
 
 **AI-framework Python sources** — parse with the matching extractor:
