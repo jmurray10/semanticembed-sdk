@@ -485,6 +485,7 @@ for terms and common questions.
 Built by **Jeff Murray** ([@jmurray10](https://github.com/jmurray10)).
 
 - Email: **jeffmurr@seas.upenn.edu**
+- LinkedIn: [linkedin.com/in/jeff-murray-ai](https://www.linkedin.com/in/jeff-murray-ai)
 - GitHub: [@jmurray10](https://github.com/jmurray10)
 - License inquiries, design partnerships, and YC/investor introductions: same email.
 
