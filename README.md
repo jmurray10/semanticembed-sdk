@@ -18,8 +18,8 @@ SemanticEmbed computes a 6-dimensional structural encoding for every node in a d
 - **CI/CD and data pipelines** — build graph fragility, ETL bottlenecks, drift gates
 
 > **Live demos:**
-> - **[Hugging Face Space](https://huggingface.co/spaces/jmurray10/semanticembed-agent-risk)** — paste a LangGraph / CrewAI / AutoGen file, get the encoding + risk findings (zero install, ML-researcher framing).
-> - **[Demo dashboard](https://semanticembed-dashboard.vercel.app/)** — Vercel-hosted demo with the 4 reference apps + interactive 6D explorer (auth required).
+> - **[Hugging Face Space](https://huggingface.co/spaces/jmurray10/semanticembed-agent-risk)** — zero-install. Paste a LangGraph / CrewAI / AutoGen file, get the encoding + risk findings.
+> - **[Demo dashboard](https://semanticembed-dashboard.vercel.app/)** — interactive 6D explorer with 4 reference apps (sign-in required; click "Try Demo" on the login page for a no-account walkthrough).
 
 > **Validated against production incidents.** In a blind test against a live production Dynatrace environment (108 services, 569 topology-relevant incidents over 30 days), **79.6%** of incidents (453/569) occurred on nodes that 6D structural analysis had flagged as risky — from the call graph alone, before any incident occurred. See [validation methodology](docs/validation_methodology.md).
 
@@ -135,6 +135,7 @@ correlation results vs standard graph centrality.
 
 ## What's new in v0.7
 
+- **Modern AutoGen patterns + lenient edge parser + better error messages** (v0.7.3)
 - **`live.from_dynatrace` / `from_honeycomb` / `from_datadog`** — pull real call edges from running infra (v0.5–v0.7)
 - **OpenTelemetry trace ingestion** — auto-detects OTLP / Jaeger / Zipkin (v0.3)
 - **AI agent framework parsers** — `from_langgraph`, `from_crewai`, `from_autogen`, AST-only, no need to install the framework (v0.4)
