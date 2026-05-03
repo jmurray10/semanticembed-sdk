@@ -7,9 +7,9 @@
 [![Patent Pending](https://img.shields.io/badge/patent-%2363%2F994%2C075-orange.svg)](LICENSE-FAQ.md#patent)
 [![Changelog](https://img.shields.io/badge/changelog-current-success.svg)](CHANGELOG.md)
 
-**Structural risk for directed graphs — especially AI agent pipelines.** Six numbers per node. Sub-millisecond.
+**Structural risk for directed graphs — especially AI agent pipelines.** Six numbers per node. Sub-millisecond server-side compute.
 
-SemanticEmbed computes a 6-dimensional structural encoding for every node in a directed graph. From a bare edge list — no runtime telemetry, no historical data, no tuning — it produces six independent measurements that fully describe each node's structural role.
+SemanticEmbed computes a 6-dimensional structural encoding for every node in a directed graph. From a bare edge list — no runtime telemetry, no historical data, no tuning — it produces six complementary measurements that capture distinct aspects of each node's structural role (depth, lateral redundancy, community, throughput, path criticality, broadcast vs aggregation).
 
 **Designed for the topologies traditional observability misses:**
 
@@ -30,7 +30,7 @@ SemanticEmbed computes a 6-dimensional structural encoding for every node in a d
 Observability tools tell you **what broke**. SemanticEmbed tells you **what will break** — from topology alone.
 
 - **No agents, no instrumentation** — just an edge list
-- **Sub-millisecond** — encodes 100+ node graphs in <1ms
+- **Sub-millisecond server-side compute** — the encoding kernel itself runs in <1 ms on a 100-node graph; full HTTP round-trip via the cloud API is typically 0.5–2 s including network
 - **Works on any directed graph** — AI agent pipelines, microservices, data workflows, CI/CD
 - **Complementary structural axes** — six dimensions, each captures risk signals the others cannot
 - **14 deterministic edge parsers + 3 live connectors** — go from real infra to encoded result in 2 lines
@@ -100,7 +100,7 @@ Runtime monitoring tells you what is slow **now**. Structural analysis tells you
 
 ## The Six Dimensions
 
-Every node gets six independent structural measurements:
+Every node gets six complementary structural measurements:
 
 | Dimension | What It Measures | Risk Signal |
 |-----------|-----------------|-------------|
@@ -111,9 +111,13 @@ Every node gets six independent structural measurements:
 | **Criticality** | Fraction of end-to-end paths depending on this node | High criticality = SPOF |
 | **Fanout** | Broadcaster (1.0) vs aggregator (0.0) | High fanout = amplification risk |
 
-These six properties capture complementary structural information. Each dimension provides risk signals the others cannot.
+These six properties capture complementary structural information. The
+risk patterns documented below combine specific axes; no single axis is a
+complete risk signal on its own.
 
-See [docs/dimensions.md](docs/dimensions.md) for the full reference.
+See [docs/dimensions.md](docs/dimensions.md) for axis definitions, the
+formal invariance properties of the encoding, and the empirical
+correlation results vs standard graph centrality.
 
 ---
 
