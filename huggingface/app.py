@@ -294,6 +294,7 @@ def _topology_plot(edges: list[tuple[str, str]], result, report) -> go.Figure:
         line=dict(width=0.8, color="#94a3b8"),  # slate-400
         hoverinfo="none",
         mode="lines",
+        showlegend=False,
     )
 
     # Arrow annotations for direction (one per edge)
@@ -346,6 +347,7 @@ def _topology_plot(edges: list[tuple[str, str]], result, report) -> go.Figure:
         textfont=dict(size=10, color="#1e293b"),
         hovertext=hovers,
         hoverinfo="text",
+        showlegend=False,
     )
 
     # Severity ring overlay for risk-flagged nodes
