@@ -501,12 +501,21 @@ def analyze(mode: str, code: str):
     except SemanticEmbedError as e:
         return _empty_state(f"**Encoding error.** `{type(e).__name__}: {e}`")
 
-    return (
-        _summary_md(edges, result, report, kind),
-        _topology_plot(edges, result, report),
-        _df_6d(result),
-        _risks_md(report),
-    )
+    # Surface any rendering bugs in the summary instead of letting Gradio
+    # swallow them with a generic "Error" badge.
+    try:
+        return (
+            _summary_md(edges, result, report, kind),
+            _topology_plot(edges, result, report),
+            _df_6d(result),
+            _risks_md(report),
+        )
+    except Exception as e:
+        import traceback
+        return _empty_state(
+            f"**Render error.** `{type(e).__name__}: {e}`\n\n"
+            f"```\n{traceback.format_exc()[-1500:]}\n```"
+        )
 
 
 # --- UI ----------------------------------------------------------------------
