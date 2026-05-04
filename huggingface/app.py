@@ -610,6 +610,273 @@ def analyze(mode: str, code: str):
         )
 
 
+# --- Drift comparison (Phase C) ---------------------------------------------
+
+
+def _crit(result, node: str) -> float:
+    """Criticality of `node` in `result`, or 0 if missing."""
+    if node not in result.vectors:
+        return 0.0
+    return _vec_to_dict(result.vectors[node])["criticality"]
+
+
+def _drift_summary_md(
+    edges_a, edges_b, result_a, result_b, threshold: float = 0.05
+) -> str:
+    """Headline: X added · Y removed · Z changed criticality by >threshold."""
+    nodes_a = set(result_a.vectors.keys())
+    nodes_b = set(result_b.vectors.keys())
+    added = nodes_b - nodes_a
+    removed = nodes_a - nodes_b
+    common = nodes_a & nodes_b
+    changed = sum(
+        1 for n in common
+        if abs(_crit(result_b, n) - _crit(result_a, n)) > threshold
+    )
+    n_a = len(nodes_a)
+    n_b = len(nodes_b)
+    e_a = len(edges_a)
+    e_b = len(edges_b)
+    return (
+        f"### Drift summary\n"
+        f"**Before:** {n_a} nodes · {e_a} edges  →  "
+        f"**After:** {n_b} nodes · {e_b} edges\n\n"
+        f"**{len(added)} added** · **{len(removed)} removed** · "
+        f"**{changed} changed criticality by > {threshold:.2f}**"
+    )
+
+
+def _drift_plot(edges_a, edges_b, result_a, result_b) -> go.Figure:
+    """Union graph. Color encodes Δcriticality. Added=teal, removed=gray."""
+    G = nx.DiGraph()
+    G.add_edges_from(list(edges_a) + list(edges_b))
+    pos = _choose_layout(G)
+
+    nodes_a = set(result_a.vectors.keys())
+    nodes_b = set(result_b.vectors.keys())
+
+    # Edge segments (gray for both)
+    edge_x: list[float] = []
+    edge_y: list[float] = []
+    for src, tgt in G.edges():
+        if src in pos and tgt in pos:
+            x0, y0 = pos[src]
+            x1, y1 = pos[tgt]
+            edge_x += [x0, x1, None]
+            edge_y += [y0, y1, None]
+    edge_trace = go.Scatter(
+        x=edge_x, y=edge_y,
+        line=dict(width=0.8, color="#94a3b8"),
+        hoverinfo="none",
+        mode="lines",
+        showlegend=False,
+    )
+
+    # Categorize nodes
+    added_nodes = [n for n in G.nodes() if n in nodes_b and n not in nodes_a]
+    removed_nodes = [n for n in G.nodes() if n in nodes_a and n not in nodes_b]
+    common_nodes = [n for n in G.nodes() if n in nodes_a and n in nodes_b]
+
+    deltas = [_crit(result_b, n) - _crit(result_a, n) for n in common_nodes]
+    abs_max = max([abs(d) for d in deltas] + [0.05])  # avoid 0 range
+
+    # Common: diverging red/green, size by max(crit_a, crit_b)
+    common_x = [pos[n][0] for n in common_nodes]
+    common_y = [pos[n][1] for n in common_nodes]
+    common_sizes = [
+        22 + 28 * max(_crit(result_a, n), _crit(result_b, n))
+        for n in common_nodes
+    ]
+    common_hover = []
+    for n in common_nodes:
+        ca = _crit(result_a, n)
+        cb = _crit(result_b, n)
+        common_hover.append(
+            f"<b>{n}</b><br>"
+            f"crit before: {ca:.3f}<br>"
+            f"crit after:  {cb:.3f}<br>"
+            f"<b>Δ crit:    {cb - ca:+.3f}</b>"
+        )
+    common_trace = go.Scatter(
+        x=common_x, y=common_y,
+        mode="markers+text",
+        marker=dict(
+            size=common_sizes,
+            color=deltas,
+            colorscale=[[0, "#16a34a"], [0.5, "#cbd5e1"], [1, "#dc2626"]],
+            cmin=-abs_max, cmax=abs_max,
+            line=dict(width=2, color="#1e293b"),
+            colorbar=dict(
+                title=dict(text="Δ criticality<br>(red=worse)", side="right"),
+                thickness=12, len=0.6, x=1.02,
+            ),
+        ),
+        text=common_nodes,
+        textposition="bottom center",
+        textfont=dict(size=10, color="#1e293b"),
+        hovertext=common_hover,
+        hoverinfo="text",
+        name="in both",
+        showlegend=True,
+    )
+
+    # Added: teal markers with bold ring
+    added_trace = go.Scatter(
+        x=[pos[n][0] for n in added_nodes],
+        y=[pos[n][1] for n in added_nodes],
+        mode="markers+text",
+        marker=dict(
+            size=[22 + 28 * _crit(result_b, n) for n in added_nodes],
+            color="#0d9488",  # teal-600
+            line=dict(width=3, color="#0f766e"),
+        ),
+        text=[f"+ {n}" for n in added_nodes],
+        textposition="bottom center",
+        textfont=dict(size=10, color="#0f766e"),
+        hovertext=[
+            f"<b>{n}</b><br><b>ADDED</b><br>crit after: {_crit(result_b, n):.3f}"
+            for n in added_nodes
+        ],
+        hoverinfo="text",
+        name="added",
+        showlegend=bool(added_nodes),
+    )
+
+    # Removed: faded gray markers
+    removed_trace = go.Scatter(
+        x=[pos[n][0] for n in removed_nodes],
+        y=[pos[n][1] for n in removed_nodes],
+        mode="markers+text",
+        marker=dict(
+            size=[22 + 28 * _crit(result_a, n) for n in removed_nodes],
+            color="#cbd5e1",  # slate-300
+            line=dict(width=2, color="#64748b", dash="dot"),
+            symbol="x",
+        ),
+        text=[f"− {n}" for n in removed_nodes],
+        textposition="bottom center",
+        textfont=dict(size=10, color="#475569"),
+        hovertext=[
+            f"<b>{n}</b><br><b>REMOVED</b><br>crit before: {_crit(result_a, n):.3f}"
+            for n in removed_nodes
+        ],
+        hoverinfo="text",
+        name="removed",
+        showlegend=bool(removed_nodes),
+    )
+
+    fig = go.Figure(data=[edge_trace, common_trace, added_trace, removed_trace])
+    fig.update_layout(
+        showlegend=True,
+        legend=dict(
+            orientation="h", yanchor="bottom", y=-0.12,
+            xanchor="center", x=0.5,
+        ),
+        margin=dict(l=10, r=70, t=20, b=20),
+        xaxis=dict(showgrid=False, zeroline=False, visible=False),
+        yaxis=dict(showgrid=False, zeroline=False, visible=False),
+        plot_bgcolor="white",
+        height=520,
+    )
+    return fig
+
+
+def _drift_table(result_a, result_b) -> pd.DataFrame:
+    """One row per node in the union, sorted by |Δ criticality| desc, top 20."""
+    nodes = list(set(result_a.vectors) | set(result_b.vectors))
+    rows = []
+    for n in nodes:
+        va = _vec_to_dict(result_a.vectors[n]) if n in result_a.vectors else None
+        vb = _vec_to_dict(result_b.vectors[n]) if n in result_b.vectors else None
+        ca = va["criticality"] if va else None
+        cb = vb["criticality"] if vb else None
+        ta = va["throughput"] if va else None
+        tb = vb["throughput"] if vb else None
+        fa = va["fanout"] if va else None
+        fb = vb["fanout"] if vb else None
+        # Δ values are 0 if either side missing (the status column captures it)
+        d_crit = (cb or 0.0) - (ca or 0.0)
+        d_thru = (tb or 0.0) - (ta or 0.0)
+        d_fan = (fb or 0.0) - (fa or 0.0)
+        if va is None:
+            status = "+ added"
+        elif vb is None:
+            status = "− removed"
+        else:
+            status = "in both"
+        rows.append({
+            "node": n,
+            "status": status,
+            "before crit": round(ca, 3) if ca is not None else None,
+            "after crit":  round(cb, 3) if cb is not None else None,
+            "Δ crit":      round(d_crit, 3),
+            "Δ throughput": round(d_thru, 3),
+            "Δ fanout":    round(d_fan, 3),
+        })
+    df = pd.DataFrame(rows)
+    df["__abs"] = df["Δ crit"].abs()
+    df = df.sort_values("__abs", ascending=False).drop(columns="__abs").head(20)
+    return df.reset_index(drop=True)
+
+
+def _empty_drift() -> tuple[str, go.Figure, pd.DataFrame]:
+    return (
+        "_Paste your **before** and **after** code, then click Analyze drift._",
+        _empty_plot(),
+        pd.DataFrame(columns=["node", "status", "before crit", "after crit",
+                              "Δ crit", "Δ throughput", "Δ fanout"]),
+    )
+
+
+def analyze_drift(mode: str, code_a: str, code_b: str):
+    """Encode both graphs (same mode), return summary + union plot + diff table."""
+    try:
+        edges_a, _ = _parse_input(mode, code_a)
+        edges_b, _ = _parse_input(mode, code_b)
+    except (ValueError, json.JSONDecodeError) as e:
+        return ("**Couldn't parse the input.**\n\n" + str(e),
+                _empty_plot(), _empty_drift()[2])
+    except SyntaxError as e:
+        return f"**Python syntax error.** `{e}`", _empty_plot(), _empty_drift()[2]
+    except Exception as e:
+        return (f"**Parser error.** `{type(e).__name__}: {e}`",
+                _empty_plot(), _empty_drift()[2])
+
+    if len(edges_a) < 2 or len(edges_b) < 2:
+        return ("Both inputs need at least 2 edges. "
+                f"Got {len(edges_a)} (before) and {len(edges_b)} (after).",
+                _empty_plot(), _empty_drift()[2])
+
+    try:
+        # The cache makes a second click free if either side hasn't changed.
+        result_a = se.encode(edges_a, cache=True)
+        result_b = se.encode(edges_b, cache=True)
+    except NodeLimitError as e:
+        return (f"**Free tier limit reached.** {e.n_nodes} nodes, "
+                f"limit {e.limit}.", _empty_plot(), _empty_drift()[2])
+    except SemanticConnectionError as e:
+        return (f"**Couldn't reach the API.** {e}",
+                _empty_plot(), _empty_drift()[2])
+    except APIError as e:
+        return (f"**Server error {e.status}:** `{e.detail}`",
+                _empty_plot(), _empty_drift()[2])
+    except SemanticEmbedError as e:
+        return (f"**Encoding error.** `{type(e).__name__}: {e}`",
+                _empty_plot(), _empty_drift()[2])
+
+    try:
+        return (
+            _drift_summary_md(edges_a, edges_b, result_a, result_b),
+            _drift_plot(edges_a, edges_b, result_a, result_b),
+            _drift_table(result_a, result_b),
+        )
+    except Exception as e:
+        import traceback
+        return (f"**Render error.** `{type(e).__name__}: {e}`\n\n"
+                f"```\n{traceback.format_exc()[-1500:]}\n```",
+                _empty_plot(), _empty_drift()[2])
+
+
 # --- UI ----------------------------------------------------------------------
 
 INTRO_MD = """\
@@ -665,56 +932,94 @@ def _on_mode_change(mode: str) -> tuple:
 with gr.Blocks(title="SemanticEmbed — AI Agent Topology Risk", css=CSS) as demo:
     gr.Markdown(INTRO_MD)
 
-    mode = gr.Radio(
-        choices=[MODE_LANGGRAPH, MODE_CREWAI, MODE_AUTOGEN, MODE_EDGES],
-        value=MODE_LANGGRAPH,
-        label="Mode",
-        info=(
-            "Pick what kind of input you have. The matching example loads "
-            "into the code box below — paste your own code over it, or leave "
-            "the example and click Analyze."
-        ),
-    )
+    with gr.Tabs():
+        with gr.Tab("Single graph"):
+            mode = gr.Radio(
+                choices=[MODE_LANGGRAPH, MODE_CREWAI, MODE_AUTOGEN, MODE_EDGES],
+                value=MODE_LANGGRAPH,
+                label="Mode",
+                info=(
+                    "Pick what kind of input you have. The matching example loads "
+                    "into the code box below — paste your own code over it, or leave "
+                    "the example and click Analyze."
+                ),
+            )
 
-    code_box = gr.Code(
-        label="Source / edge list",
-        language="python",
-        lines=14,
-        value="",
-    )
+            code_box = gr.Code(
+                label="Source / edge list",
+                language="python",
+                lines=14,
+                value="",
+            )
 
-    analyze_btn = gr.Button("Analyze", variant="primary", size="lg")
+            analyze_btn = gr.Button("Analyze", variant="primary", size="lg")
 
-    summary_md = gr.Markdown(elem_id="summary")
+            summary_md = gr.Markdown(elem_id="summary")
 
-    gr.Markdown(
-        "### Topology graph\n"
-        "_Node size and color encode criticality (bigger and redder = more "
-        "structural risk). Risk-flagged nodes get a colored ring. Hover for "
-        "the full 6D vector. Use the **Inspect node** picker below for the "
-        "full breakdown of any node._"
-    )
-    plot_out = gr.Plot(label="", show_label=False)
+            gr.Markdown(
+                "### Topology graph\n"
+                "_Node size and color encode criticality (bigger and redder = more "
+                "structural risk). Risk-flagged nodes get a colored ring. Hover for "
+                "the full 6D vector. Use the **Inspect node** picker below for the "
+                "full breakdown of any node._"
+            )
+            plot_out = gr.Plot(label="", show_label=False)
 
-    node_picker = gr.Dropdown(
-        choices=[], value=None, label="Inspect node",
-        info="Pick a node to see its full 6D vector and any risks. Sorted by criticality.",
-        interactive=True, allow_custom_value=False,
-    )
-    selected_md = gr.Markdown(
-        "_Run **Analyze** first to load a topology, then pick a node to inspect._"
-    )
+            node_picker = gr.Dropdown(
+                choices=[], value=None, label="Inspect node",
+                info="Pick a node to see its full 6D vector and any risks. Sorted by criticality.",
+                interactive=True, allow_custom_value=False,
+            )
+            selected_md = gr.Markdown(
+                "_Run **Analyze** first to load a topology, then pick a node to inspect._"
+            )
 
-    gr.Markdown("### 6D structural encoding (top 20 nodes by criticality)")
-    table_out = gr.Dataframe(interactive=False, wrap=True)
-    gr.Markdown("### Structural risks")
-    risks_md = gr.Markdown()
+            gr.Markdown("### 6D structural encoding (top 20 nodes by criticality)")
+            table_out = gr.Dataframe(interactive=False, wrap=True)
+            gr.Markdown("### Structural risks")
+            risks_md = gr.Markdown()
 
-    # In-process snapshot of the last analyze() output. The node-picker
-    # change handler reads from this to render the selected node's detail.
-    analyze_state = gr.State(value={})
+            # In-process snapshot of the last analyze() output. The node-picker
+            # change handler reads from this to render the selected node's detail.
+            analyze_state = gr.State(value={})
 
-    # Event wiring: radio click -> reload starter for that mode + change language
+        with gr.Tab("Compare two graphs"):
+            gr.Markdown(
+                "### Drift comparison\n"
+                "Paste your **before** code on the left and the **after** version "
+                "on the right (same mode for both). The union graph shows nodes "
+                "added (teal +), removed (gray ×), and Δ criticality for nodes "
+                "in both. Useful for architecture review: _what did this refactor "
+                "actually change about structural risk?_"
+            )
+
+            drift_mode = gr.Radio(
+                choices=[MODE_LANGGRAPH, MODE_CREWAI, MODE_AUTOGEN, MODE_EDGES],
+                value=MODE_LANGGRAPH,
+                label="Mode (applies to both sides)",
+            )
+
+            with gr.Row():
+                drift_code_a = gr.Code(
+                    label="Before",
+                    language="python",
+                    lines=14,
+                    value="",
+                )
+                drift_code_b = gr.Code(
+                    label="After",
+                    language="python",
+                    lines=14,
+                    value="",
+                )
+
+            drift_btn = gr.Button("Analyze drift", variant="primary", size="lg")
+            drift_summary_md = gr.Markdown()
+            drift_plot_out = gr.Plot(label="", show_label=False)
+            gr.Markdown("### Per-node delta (top 20 by |Δ criticality|)")
+            drift_table_out = gr.Dataframe(interactive=False, wrap=True)
+
+    # --- Event wiring: Single-graph tab ---
     mode.change(fn=_on_mode_change, inputs=mode, outputs=code_box)
     analyze_btn.click(
         fn=analyze, inputs=[mode, code_box],
@@ -727,8 +1032,25 @@ with gr.Blocks(title="SemanticEmbed — AI Agent Topology Risk", css=CSS) as dem
         outputs=selected_md,
     )
 
-    # Prefill the code box with the LangGraph starter on first load.
+    # --- Event wiring: Drift tab ---
+    drift_mode.change(
+        fn=lambda m: (gr.update(language=LANGUAGE_BY_KIND[MODE_TO_KIND[m]],
+                                value=_starter_for(m)),
+                      gr.update(language=LANGUAGE_BY_KIND[MODE_TO_KIND[m]],
+                                value=_starter_for(m))),
+        inputs=drift_mode,
+        outputs=[drift_code_a, drift_code_b],
+    )
+    drift_btn.click(
+        fn=analyze_drift,
+        inputs=[drift_mode, drift_code_a, drift_code_b],
+        outputs=[drift_summary_md, drift_plot_out, drift_table_out],
+    )
+
+    # Prefill all three code boxes with starter content on first load.
     demo.load(fn=lambda: _starter_for(MODE_LANGGRAPH), inputs=None, outputs=code_box)
+    demo.load(fn=lambda: _starter_for(MODE_LANGGRAPH), inputs=None, outputs=drift_code_a)
+    demo.load(fn=lambda: _starter_for(MODE_LANGGRAPH), inputs=None, outputs=drift_code_b)
 
     gr.Markdown("""
 ---
