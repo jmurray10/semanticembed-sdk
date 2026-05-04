@@ -287,7 +287,12 @@ def _choose_layout(G: nx.DiGraph) -> dict:
                 G.nodes[node]["layer"] = layer_idx
         return nx.multipartite_layout(G, subset_key="layer", align="vertical")
     if n < 20:
-        return nx.kamada_kawai_layout(G)
+        # kamada_kawai requires scipy; on minimal HF Space images it's not
+        # always available. Fall back to spring if the import fails.
+        try:
+            return nx.kamada_kawai_layout(G)
+        except (ImportError, ModuleNotFoundError):
+            pass
     return nx.spring_layout(G, seed=42, k=1.2 / max(n ** 0.5, 1))
 
 
