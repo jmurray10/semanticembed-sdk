@@ -263,14 +263,40 @@ _RISK_NODE_COLOR = {
 }
 
 
+def _choose_layout(G: nx.DiGraph) -> dict:
+    """Pick a NetworkX layout that reads well for this graph's shape.
+
+    - Sparse DAGs (≤30 nodes, edges/nodes < 1.5) → topological layered layout
+      so the graph reads left-to-right by depth.
+    - Small graphs (<20 nodes, has cycles) → Kamada-Kawai (compact, readable).
+    - Larger / denser graphs → spring layout (current default).
+    """
+    n = G.number_of_nodes()
+    if n == 0:
+        return {}
+    try:
+        layers = list(nx.topological_generations(G))
+    except nx.NetworkXUnfeasible:
+        layers = None
+    is_sparse = G.number_of_edges() < 1.5 * n
+    if layers is not None and is_sparse and n <= 30:
+        # Set a `layer` attribute on each node, then point multipartite_layout
+        # at it. Avoids the inverted-dict shape NetworkX 3.x expects.
+        for layer_idx, layer_nodes in enumerate(layers):
+            for node in layer_nodes:
+                G.nodes[node]["layer"] = layer_idx
+        return nx.multipartite_layout(G, subset_key="layer", align="vertical")
+    if n < 20:
+        return nx.kamada_kawai_layout(G)
+    return nx.spring_layout(G, seed=42, k=1.2 / max(n ** 0.5, 1))
+
+
 def _topology_plot(edges: list[tuple[str, str]], result, report) -> go.Figure:
     """Force-directed plot. Node color = criticality (gradient). Risk-flagged
     nodes get a colored ring overlay (red/amber/blue) and a callout label."""
     G = nx.DiGraph()
     G.add_edges_from(edges)
-    # Spring layout — deterministic seed so the same graph renders identically
-    # across reruns. k tuned for readable spacing on small graphs.
-    pos = nx.spring_layout(G, seed=42, k=1.2 / max(len(G.nodes()) ** 0.5, 1))
+    pos = _choose_layout(G)
 
     # Highest-severity flag per node (critical > warning > info)
     sev_rank = {"critical": 3, "warning": 2, "info": 1}
