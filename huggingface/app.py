@@ -379,6 +379,7 @@ def _topology_plot(edges: list[tuple[str, str]], result, report) -> go.Figure:
         hovertext=hovers,
         hoverinfo="text",
         showlegend=False,
+        customdata=nodes,  # click handler reads evt.value to get the node name
     )
 
     # Severity ring overlay for risk-flagged nodes
@@ -430,9 +431,84 @@ def _empty_plot() -> go.Figure:
     return fig
 
 
-def _empty_state(message: str) -> tuple[str, go.Figure, pd.DataFrame, str]:
+def _empty_state(message: str):
     """Used for both errors and the initial state."""
-    return message, _empty_plot(), pd.DataFrame(columns=["node"] + _DIM_NAMES), ""
+    empty_picker = gr.update(choices=[], value=None)
+    empty_detail = "_Run **Analyze** first to load a topology, then pick a node to inspect._"
+    return (
+        message,
+        _empty_plot(),
+        pd.DataFrame(columns=["node"] + _DIM_NAMES),
+        "",
+        {},
+        empty_picker,
+        empty_detail,
+    )
+
+
+def _build_state(edges, result, report) -> dict:
+    """Serializable snapshot of the last analyze() output for click lookups."""
+    return {
+        "nodes": list(result.vectors.keys()),
+        "vectors": {n: _vec_to_dict(v) for n, v in result.vectors.items()},
+        "risks": [
+            {
+                "node": r.node,
+                "category": r.category,
+                "severity": r.severity,
+                "description": getattr(r, "description", ""),
+                "value": getattr(r, "value", 0.0),
+            }
+            for r in report.risks
+        ],
+    }
+
+
+def _node_detail_md(node: str, v: dict, risks: list[dict]) -> str:
+    """Markdown card for a clicked node — full 6D vector + any matching risks."""
+    sev_emoji = {"critical": "🚨", "warning": "⚠️", "info": "ℹ️"}
+    bars = []
+    for dim in _DIM_NAMES:
+        val = v.get(dim, 0.0)
+        bar_n = int(val * 20)
+        bar = "█" * bar_n + "░" * (20 - bar_n)
+        bars.append(f"`{dim:13s}` `{bar}` `{val:.3f}`")
+    parts = [f"### Selected node: `{node}`", "", *bars]
+    if risks:
+        parts.append("")
+        parts.append(f"**{len(risks)} risk{'s' if len(risks)>1 else ''} on this node:**")
+        for r in risks:
+            emoji = sev_emoji.get(r["severity"], "•")
+            desc = (r.get("description") or "").strip()
+            parts.append(f"- {emoji} `{r['category']}` ({r['severity']})" +
+                         (f" — {desc}" if desc else ""))
+    else:
+        parts.append("")
+        parts.append("_No structural risks flagged on this node._")
+    return "\n".join(parts)
+
+
+def _on_node_select(state: dict | None, node: str | None) -> str:
+    """Dropdown handler: render the picked node's full 6D + risks panel.
+
+    `gr.Plot` has no click event in Gradio 5.x, so node inspection runs through
+    a dropdown populated from the last analyze() call (sorted by criticality
+    descending).
+    """
+    if not state or not state.get("vectors"):
+        return "_Run **Analyze** first to load a topology, then pick a node to inspect._"
+    if not node:
+        return "_Pick a node from the dropdown to see its full 6D + risks._"
+    if node not in state["vectors"]:
+        return f"_Node `{node}` is not in the current encoding._"
+    matched = [r for r in state["risks"] if r["node"] == node]
+    return _node_detail_md(node, state["vectors"][node], matched)
+
+
+def _picker_choices(state: dict) -> list[str]:
+    """Node names sorted by criticality desc — most-interesting nodes first."""
+    crits = {n: state["vectors"][n].get("criticality", 0.0) for n in state["nodes"]}
+    return sorted(state["nodes"], key=lambda n: crits.get(n, 0.0), reverse=True)
 
 
 # --- Analyze (the click handler) ---------------------------------------------
@@ -509,11 +585,23 @@ def analyze(mode: str, code: str):
     # Surface any rendering bugs in the summary instead of letting Gradio
     # swallow them with a generic "Error" badge.
     try:
+        state = _build_state(edges, result, report)
+        choices = _picker_choices(state)
+        # Auto-select the highest-criticality node so users see a populated
+        # detail panel immediately — no extra click required.
+        first_node = choices[0] if choices else None
+        first_detail = (
+            _on_node_select(state, first_node) if first_node
+            else "_No nodes to inspect._"
+        )
         return (
             _summary_md(edges, result, report, kind),
             _topology_plot(edges, result, report),
             _df_6d(result),
             _risks_md(report),
+            state,
+            gr.update(choices=choices, value=first_node),
+            first_detail,
         )
     except Exception as e:
         import traceback
@@ -604,20 +692,40 @@ with gr.Blocks(title="SemanticEmbed — AI Agent Topology Risk", css=CSS) as dem
         "### Topology graph\n"
         "_Node size and color encode criticality (bigger and redder = more "
         "structural risk). Risk-flagged nodes get a colored ring. Hover for "
-        "the full 6D vector._"
+        "the full 6D vector. Use the **Inspect node** picker below for the "
+        "full breakdown of any node._"
     )
     plot_out = gr.Plot(label="", show_label=False)
+
+    node_picker = gr.Dropdown(
+        choices=[], value=None, label="Inspect node",
+        info="Pick a node to see its full 6D vector and any risks. Sorted by criticality.",
+        interactive=True, allow_custom_value=False,
+    )
+    selected_md = gr.Markdown(
+        "_Run **Analyze** first to load a topology, then pick a node to inspect._"
+    )
 
     gr.Markdown("### 6D structural encoding (top 20 nodes by criticality)")
     table_out = gr.Dataframe(interactive=False, wrap=True)
     gr.Markdown("### Structural risks")
     risks_md = gr.Markdown()
 
+    # In-process snapshot of the last analyze() output. The node-picker
+    # change handler reads from this to render the selected node's detail.
+    analyze_state = gr.State(value={})
+
     # Event wiring: radio click -> reload starter for that mode + change language
     mode.change(fn=_on_mode_change, inputs=mode, outputs=code_box)
     analyze_btn.click(
         fn=analyze, inputs=[mode, code_box],
-        outputs=[summary_md, plot_out, table_out, risks_md],
+        outputs=[summary_md, plot_out, table_out, risks_md,
+                 analyze_state, node_picker, selected_md],
+    )
+    node_picker.change(
+        fn=_on_node_select,
+        inputs=[analyze_state, node_picker],
+        outputs=selected_md,
     )
 
     # Prefill the code box with the LangGraph starter on first load.
