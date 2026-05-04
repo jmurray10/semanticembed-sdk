@@ -379,7 +379,6 @@ def _topology_plot(edges: list[tuple[str, str]], result, report) -> go.Figure:
         hovertext=hovers,
         hoverinfo="text",
         showlegend=False,
-        customdata=nodes,  # click handler reads evt.value to get the node name
     )
 
     # Severity ring overlay for risk-flagged nodes
