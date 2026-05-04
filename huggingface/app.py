@@ -22,7 +22,9 @@ import tempfile
 from pathlib import Path
 
 import gradio as gr
+import networkx as nx
 import pandas as pd
+import plotly.graph_objects as go
 import semanticembed as se
 from semanticembed.exceptions import (
     APIError,
@@ -254,9 +256,150 @@ def _risks_md(report) -> str:
     return "\n".join(parts)
 
 
-def _empty_state(message: str) -> tuple[str, pd.DataFrame, str]:
+_RISK_NODE_COLOR = {
+    "critical": "#dc2626",   # red-600
+    "warning":  "#f59e0b",   # amber-500
+    "info":     "#3b82f6",   # blue-500
+}
+
+
+def _topology_plot(edges: list[tuple[str, str]], result, report) -> go.Figure:
+    """Force-directed plot. Node color = criticality (gradient). Risk-flagged
+    nodes get a colored ring overlay (red/amber/blue) and a callout label."""
+    G = nx.DiGraph()
+    G.add_edges_from(edges)
+    # Spring layout — deterministic seed so the same graph renders identically
+    # across reruns. k tuned for readable spacing on small graphs.
+    pos = nx.spring_layout(G, seed=42, k=1.2 / max(len(G.nodes()) ** 0.5, 1))
+
+    # Highest-severity flag per node (critical > warning > info)
+    sev_rank = {"critical": 3, "warning": 2, "info": 1}
+    node_top_sev: dict[str, str] = {}
+    for r in report.risks:
+        cur = node_top_sev.get(r.node)
+        if cur is None or sev_rank.get(r.severity, 0) > sev_rank.get(cur, 0):
+            node_top_sev[r.node] = r.severity
+
+    # Edge segments, drawn before the nodes so they sit underneath
+    edge_x: list[float] = []
+    edge_y: list[float] = []
+    for src, tgt in G.edges():
+        if src in pos and tgt in pos:
+            x0, y0 = pos[src]
+            x1, y1 = pos[tgt]
+            edge_x += [x0, x1, None]
+            edge_y += [y0, y1, None]
+    edge_trace = go.Scatter(
+        x=edge_x, y=edge_y,
+        line=dict(width=0.8, color="#94a3b8"),  # slate-400
+        hoverinfo="none",
+        mode="lines",
+    )
+
+    # Arrow annotations for direction (one per edge)
+    arrows = []
+    for src, tgt in G.edges():
+        if src in pos and tgt in pos:
+            arrows.append(dict(
+                ax=pos[src][0], ay=pos[src][1],
+                x=pos[tgt][0], y=pos[tgt][1],
+                xref="x", yref="y", axref="x", ayref="y",
+                showarrow=True, arrowhead=2, arrowsize=1.0, arrowwidth=1,
+                arrowcolor="#94a3b8",
+                opacity=0.5,
+            ))
+
+    # Node markers — color encodes criticality (0 -> light, 1 -> dark red)
+    nodes = list(G.nodes())
+    node_x = [pos[n][0] for n in nodes]
+    node_y = [pos[n][1] for n in nodes]
+    crits = [_vec_to_dict(result.vectors[n])["criticality"] for n in nodes]
+    fanouts = [_vec_to_dict(result.vectors[n])["fanout"] for n in nodes]
+    sizes = [22 + 28 * c for c in crits]  # critical nodes are bigger
+    hovers = []
+    for n in nodes:
+        v = _vec_to_dict(result.vectors[n])
+        sev = node_top_sev.get(n)
+        sev_line = f"<br><b>Risk: {sev}</b>" if sev else ""
+        hovers.append(
+            f"<b>{n}</b>{sev_line}<br>"
+            f"depth={v['depth']:.2f} indep={v['independence']:.2f}<br>"
+            f"hier={v['hierarchy']:.2f} thru={v['throughput']:.2f}<br>"
+            f"<b>crit={v['criticality']:.3f}</b> fanout={v['fanout']:.2f}"
+        )
+    node_trace = go.Scatter(
+        x=node_x, y=node_y,
+        mode="markers+text",
+        marker=dict(
+            size=sizes,
+            color=crits,
+            colorscale=[[0, "#cbd5e1"], [0.5, "#fb923c"], [1, "#dc2626"]],
+            cmin=0, cmax=max(max(crits) if crits else 1, 0.1),
+            line=dict(width=2, color="#1e293b"),
+            colorbar=dict(
+                title=dict(text="Criticality", side="right"),
+                thickness=12, len=0.6, x=1.02,
+            ),
+        ),
+        text=nodes,
+        textposition="bottom center",
+        textfont=dict(size=10, color="#1e293b"),
+        hovertext=hovers,
+        hoverinfo="text",
+    )
+
+    # Severity ring overlay for risk-flagged nodes
+    rings = []
+    for sev_label, color in _RISK_NODE_COLOR.items():
+        nx_ring = [n for n in nodes if node_top_sev.get(n) == sev_label]
+        if not nx_ring:
+            continue
+        rings.append(go.Scatter(
+            x=[pos[n][0] for n in nx_ring],
+            y=[pos[n][1] for n in nx_ring],
+            mode="markers",
+            marker=dict(
+                size=[sizes[nodes.index(n)] + 10 for n in nx_ring],
+                color="rgba(0,0,0,0)",
+                line=dict(width=3, color=color),
+            ),
+            name=f"{sev_label} risk",
+            hoverinfo="skip",
+            showlegend=True,
+        ))
+
+    fig = go.Figure(data=[edge_trace] + rings + [node_trace])
+    fig.update_layout(
+        showlegend=bool(rings),
+        legend=dict(
+            orientation="h", yanchor="bottom", y=-0.12,
+            xanchor="center", x=0.5,
+        ),
+        annotations=arrows,
+        margin=dict(l=10, r=70, t=20, b=20),
+        xaxis=dict(showgrid=False, zeroline=False, visible=False),
+        yaxis=dict(showgrid=False, zeroline=False, visible=False),
+        plot_bgcolor="white",
+        height=520,
+    )
+    return fig
+
+
+def _empty_plot() -> go.Figure:
+    fig = go.Figure()
+    fig.update_layout(
+        xaxis=dict(showgrid=False, zeroline=False, visible=False),
+        yaxis=dict(showgrid=False, zeroline=False, visible=False),
+        margin=dict(l=10, r=10, t=10, b=10),
+        height=520,
+        plot_bgcolor="white",
+    )
+    return fig
+
+
+def _empty_state(message: str) -> tuple[str, go.Figure, pd.DataFrame, str]:
     """Used for both errors and the initial state."""
-    return message, pd.DataFrame(columns=["node"] + _DIM_NAMES), ""
+    return message, _empty_plot(), pd.DataFrame(columns=["node"] + _DIM_NAMES), ""
 
 
 # --- Analyze (the click handler) ---------------------------------------------
@@ -330,7 +473,12 @@ def analyze(mode: str, code: str):
     except SemanticEmbedError as e:
         return _empty_state(f"**Encoding error.** `{type(e).__name__}: {e}`")
 
-    return _summary_md(edges, result, report, kind), _df_6d(result), _risks_md(report)
+    return (
+        _summary_md(edges, result, report, kind),
+        _topology_plot(edges, result, report),
+        _df_6d(result),
+        _risks_md(report),
+    )
 
 
 # --- UI ----------------------------------------------------------------------
@@ -409,6 +557,15 @@ with gr.Blocks(title="SemanticEmbed — AI Agent Topology Risk", css=CSS) as dem
     analyze_btn = gr.Button("Analyze", variant="primary", size="lg")
 
     summary_md = gr.Markdown(elem_id="summary")
+
+    gr.Markdown(
+        "### Topology graph\n"
+        "_Node size and color encode criticality (bigger and redder = more "
+        "structural risk). Risk-flagged nodes get a colored ring. Hover for "
+        "the full 6D vector._"
+    )
+    plot_out = gr.Plot(label="", show_label=False)
+
     gr.Markdown("### 6D structural encoding (top 20 nodes by criticality)")
     table_out = gr.Dataframe(interactive=False, wrap=True)
     gr.Markdown("### Structural risks")
@@ -418,7 +575,7 @@ with gr.Blocks(title="SemanticEmbed — AI Agent Topology Risk", css=CSS) as dem
     mode.change(fn=_on_mode_change, inputs=mode, outputs=code_box)
     analyze_btn.click(
         fn=analyze, inputs=[mode, code_box],
-        outputs=[summary_md, table_out, risks_md],
+        outputs=[summary_md, plot_out, table_out, risks_md],
     )
 
     # Prefill the code box with the LangGraph starter on first load.
