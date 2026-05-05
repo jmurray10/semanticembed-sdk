@@ -890,62 +890,184 @@ def _drift_table(result_a, result_b) -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 
-def _empty_drift() -> tuple[str, go.Figure, pd.DataFrame]:
+def _empty_drift():
     return (
         "_Paste your **before** and **after** code, then click Analyze drift._",
         _empty_plot(),
         pd.DataFrame(columns=["node", "status", "before crit", "after crit",
                               "Δ crit", "Δ throughput", "Δ fanout"]),
+        {},
+        gr.update(choices=[], value=None),
+        "_Run **Analyze drift** first, then pick a node to compare its 6D vector before vs after._",
     )
 
 
+def _build_drift_state(result_a, result_b, report_a, report_b) -> dict:
+    """Snapshot of both encodings + reports for the node-picker handler."""
+    nodes = sorted(set(result_a.vectors) | set(result_b.vectors))
+    vectors_a = {n: _vec_to_dict(v) for n, v in result_a.vectors.items()}
+    vectors_b = {n: _vec_to_dict(v) for n, v in result_b.vectors.items()}
+
+    def _risks(report):
+        return [
+            {
+                "node": r.node,
+                "category": r.category,
+                "severity": r.severity,
+                "description": getattr(r, "description", ""),
+            }
+            for r in report.risks
+        ]
+
+    return {
+        "nodes": nodes,
+        "vectors_a": vectors_a,
+        "vectors_b": vectors_b,
+        "risks_a": _risks(report_a),
+        "risks_b": _risks(report_b),
+    }
+
+
+def _drift_picker_choices(state: dict) -> list[str]:
+    """Nodes sorted by |Δ criticality| desc — biggest swings first."""
+    def _delta(n: str) -> float:
+        ca = state["vectors_a"].get(n, {}).get("criticality", 0.0)
+        cb = state["vectors_b"].get(n, {}).get("criticality", 0.0)
+        return abs(cb - ca)
+    return sorted(state["nodes"], key=_delta, reverse=True)
+
+
+def _drift_node_detail_md(state: dict | None, node: str | None) -> str:
+    """Side-by-side 6D vector + risks comparison for one node."""
+    if not state or not state.get("nodes"):
+        return ("_Run **Analyze drift** first, then pick a node to compare "
+                "its 6D vector before vs after._")
+    if not node:
+        return "_Pick a node from the dropdown to see its before-vs-after breakdown._"
+    if node not in state["nodes"]:
+        return f"_Node `{node}` is not in either graph._"
+
+    va = state["vectors_a"].get(node)
+    vb = state["vectors_b"].get(node)
+    risks_a = [r for r in state["risks_a"] if r["node"] == node]
+    risks_b = [r for r in state["risks_b"] if r["node"] == node]
+
+    if va is None and vb is None:
+        return f"_Node `{node}` has no encoding on either side._"
+    if va is None:
+        status = "**+ added** (new in After)"
+    elif vb is None:
+        status = "**− removed** (only in Before)"
+    else:
+        status = "**in both**"
+
+    parts = [f"### Selected node: `{node}` — {status}", ""]
+    parts.append("| Dimension | Before | After | Δ |")
+    parts.append("|---|---|---|---|")
+    for dim in _DIM_NAMES:
+        ba = f"{va[dim]:.3f}" if va else "—"
+        bb = f"{vb[dim]:.3f}" if vb else "—"
+        if va and vb:
+            d = vb[dim] - va[dim]
+            if abs(d) < 0.0005:
+                ds = "0.000"
+            else:
+                ds = f"{d:+.3f}"
+        else:
+            ds = "—"
+        parts.append(f"| {dim} | {ba} | {bb} | {ds} |")
+    parts.append("")
+
+    sev_emoji = {"critical": "🚨", "warning": "⚠️", "info": "ℹ️"}
+
+    def _fmt_risks(label: str, risks: list) -> str:
+        if not risks:
+            return f"_No risks flagged **{label}**._"
+        lines = [f"**Risks {label} ({len(risks)}):**"]
+        for r in risks:
+            emoji = sev_emoji.get(r["severity"], "•")
+            lines.append(f"- {emoji} `{r['category']}` ({r['severity']})")
+        return "\n".join(lines)
+
+    parts.append(_fmt_risks("before", risks_a))
+    parts.append("")
+    parts.append(_fmt_risks("after", risks_b))
+
+    # Net change summary line
+    if va and vb:
+        if len(risks_a) > len(risks_b):
+            parts.append(f"\n_↘ {len(risks_a) - len(risks_b)} fewer risks after refactor on this node._")
+        elif len(risks_b) > len(risks_a):
+            parts.append(f"\n_↗ {len(risks_b) - len(risks_a)} more risks after refactor on this node._")
+
+    return "\n".join(parts)
+
+
+def _on_drift_node_select(state: dict | None, node: str | None) -> str:
+    return _drift_node_detail_md(state, node)
+
+
+def _drift_error(msg: str):
+    """Error path — keep the same return shape as the success path."""
+    _, plot, table, state, picker, detail = _empty_drift()
+    return msg, plot, table, state, picker, detail
+
+
 def analyze_drift(mode: str, code_a: str, code_b: str):
-    """Encode both graphs (same mode), return summary + union plot + diff table."""
+    """Encode both graphs (same mode); return summary + union plot + diff
+    table + state + picker update + initial detail panel."""
     try:
         edges_a, _ = _parse_input(mode, code_a)
         edges_b, _ = _parse_input(mode, code_b)
     except (ValueError, json.JSONDecodeError) as e:
-        return ("**Couldn't parse the input.**\n\n" + str(e),
-                _empty_plot(), _empty_drift()[2])
+        return _drift_error("**Couldn't parse the input.**\n\n" + str(e))
     except SyntaxError as e:
-        return f"**Python syntax error.** `{e}`", _empty_plot(), _empty_drift()[2]
+        return _drift_error(f"**Python syntax error.** `{e}`")
     except Exception as e:
-        return (f"**Parser error.** `{type(e).__name__}: {e}`",
-                _empty_plot(), _empty_drift()[2])
+        return _drift_error(f"**Parser error.** `{type(e).__name__}: {e}`")
 
     if len(edges_a) < 2 or len(edges_b) < 2:
-        return ("Both inputs need at least 2 edges. "
-                f"Got {len(edges_a)} (before) and {len(edges_b)} (after).",
-                _empty_plot(), _empty_drift()[2])
+        return _drift_error(
+            "Both inputs need at least 2 edges. "
+            f"Got {len(edges_a)} (before) and {len(edges_b)} (after)."
+        )
 
     try:
         # The cache makes a second click free if either side hasn't changed.
         result_a = se.encode(edges_a, cache=True)
         result_b = se.encode(edges_b, cache=True)
+        report_a = se.report(result_a)
+        report_b = se.report(result_b)
     except NodeLimitError as e:
-        return (f"**Free tier limit reached.** {e.n_nodes} nodes, "
-                f"limit {e.limit}.", _empty_plot(), _empty_drift()[2])
+        return _drift_error(
+            f"**Free tier limit reached.** {e.n_nodes} nodes, limit {e.limit}."
+        )
     except SemanticConnectionError as e:
-        return (f"**Couldn't reach the API.** {e}",
-                _empty_plot(), _empty_drift()[2])
+        return _drift_error(f"**Couldn't reach the API.** {e}")
     except APIError as e:
-        return (f"**Server error {e.status}:** `{e.detail}`",
-                _empty_plot(), _empty_drift()[2])
+        return _drift_error(f"**Server error {e.status}:** `{e.detail}`")
     except SemanticEmbedError as e:
-        return (f"**Encoding error.** `{type(e).__name__}: {e}`",
-                _empty_plot(), _empty_drift()[2])
+        return _drift_error(f"**Encoding error.** `{type(e).__name__}: {e}`")
 
     try:
+        state = _build_drift_state(result_a, result_b, report_a, report_b)
+        choices = _drift_picker_choices(state)
+        first_node = choices[0] if choices else None
+        first_detail = _drift_node_detail_md(state, first_node)
         return (
             _drift_summary_md(edges_a, edges_b, result_a, result_b),
             _drift_plot(edges_a, edges_b, result_a, result_b),
             _drift_table(result_a, result_b),
+            state,
+            gr.update(choices=choices, value=first_node),
+            first_detail,
         )
     except Exception as e:
         import traceback
-        return (f"**Render error.** `{type(e).__name__}: {e}`\n\n"
-                f"```\n{traceback.format_exc()[-1500:]}\n```",
-                _empty_plot(), _empty_drift()[2])
+        return _drift_error(
+            f"**Render error.** `{type(e).__name__}: {e}`\n\n"
+            f"```\n{traceback.format_exc()[-1500:]}\n```"
+        )
 
 
 # --- UI ----------------------------------------------------------------------
@@ -1095,8 +1217,23 @@ with gr.Blocks(title="SemanticEmbed — AI Agent Topology Risk", css=CSS) as dem
             drift_btn = gr.Button("Analyze drift", variant="primary", size="lg")
             drift_summary_md = gr.Markdown()
             drift_plot_out = gr.Plot(label="", show_label=False)
+
+            drift_node_picker = gr.Dropdown(
+                choices=[], value=None, label="Inspect node (before vs after)",
+                info=("Pick a node to see its 6D vector on each side and the Δ. "
+                      "Sorted by |Δ criticality|, biggest swings first."),
+                interactive=True, allow_custom_value=False,
+            )
+            drift_detail_md = gr.Markdown(
+                "_Run **Analyze drift** first, then pick a node to compare its 6D vector before vs after._"
+            )
+
             gr.Markdown("### Per-node delta (top 20 by |Δ criticality|)")
             drift_table_out = gr.Dataframe(interactive=False, wrap=True)
+
+            # In-process snapshot of the last analyze_drift() output. The
+            # node-picker change handler reads from this.
+            drift_state = gr.State(value={})
 
     # --- Event wiring: Single-graph tab ---
     mode.change(fn=_on_mode_change, inputs=mode, outputs=code_box)
@@ -1127,7 +1264,13 @@ with gr.Blocks(title="SemanticEmbed — AI Agent Topology Risk", css=CSS) as dem
     drift_btn.click(
         fn=analyze_drift,
         inputs=[drift_mode, drift_code_a, drift_code_b],
-        outputs=[drift_summary_md, drift_plot_out, drift_table_out],
+        outputs=[drift_summary_md, drift_plot_out, drift_table_out,
+                 drift_state, drift_node_picker, drift_detail_md],
+    )
+    drift_node_picker.change(
+        fn=_on_drift_node_select,
+        inputs=[drift_state, drift_node_picker],
+        outputs=drift_detail_md,
     )
 
     # Prefill all three code boxes. Drift's "After" loads the *_after.* file
