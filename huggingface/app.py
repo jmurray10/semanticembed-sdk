@@ -58,6 +58,16 @@ STARTER_BY_MODE: dict[str, str] = {
     MODE_EDGES:     "boutique.json",
 }
 
+# Drift tab "After" starters — each is a structurally meaningful refactor of
+# the matching "Before" starter so first-click Analyze drift produces a
+# non-trivial result instead of all zeros.
+STARTER_AFTER_BY_MODE: dict[str, str] = {
+    MODE_LANGGRAPH: "langgraph_research_after.py",
+    MODE_CREWAI:    "crewai_content_after.py",
+    MODE_AUTOGEN:   "autogen_codereview_after.py",
+    MODE_EDGES:     "boutique_after.json",
+}
+
 PARSER_BY_KIND = {
     "langgraph": se.extract.from_langgraph,
     "crewai": se.extract.from_crewai,
@@ -647,7 +657,13 @@ def _drift_summary_md(
 
 
 def _drift_plot(edges_a, edges_b, result_a, result_b) -> go.Figure:
-    """Union graph. Color encodes Δcriticality. Added=teal, removed=gray."""
+    """Union graph with edge-level diff coloring.
+
+    - Edges in BOTH: thin gray solid (unchanged).
+    - Edges in AFTER only: teal solid (added).
+    - Edges in BEFORE only: gray dashed (removed).
+    Same color language as the node markers (teal=added, gray=removed).
+    """
     G = nx.DiGraph()
     G.add_edges_from(list(edges_a) + list(edges_b))
     pos = _choose_layout(G)
@@ -655,22 +671,46 @@ def _drift_plot(edges_a, edges_b, result_a, result_b) -> go.Figure:
     nodes_a = set(result_a.vectors.keys())
     nodes_b = set(result_b.vectors.keys())
 
-    # Edge segments (gray for both)
-    edge_x: list[float] = []
-    edge_y: list[float] = []
-    for src, tgt in G.edges():
-        if src in pos and tgt in pos:
-            x0, y0 = pos[src]
-            x1, y1 = pos[tgt]
-            edge_x += [x0, x1, None]
-            edge_y += [y0, y1, None]
-    edge_trace = go.Scatter(
-        x=edge_x, y=edge_y,
+    edges_a_set = {(s, t) for s, t in edges_a}
+    edges_b_set = {(s, t) for s, t in edges_b}
+    common_edges = edges_a_set & edges_b_set
+    added_edges = edges_b_set - edges_a_set
+    removed_edges = edges_a_set - edges_b_set
+
+    def _segments(edge_set):
+        xs: list[float] = []
+        ys: list[float] = []
+        for src, tgt in edge_set:
+            if src in pos and tgt in pos:
+                x0, y0 = pos[src]
+                x1, y1 = pos[tgt]
+                xs += [x0, x1, None]
+                ys += [y0, y1, None]
+        return xs, ys
+
+    cx, cy = _segments(common_edges)
+    ax_, ay_ = _segments(added_edges)
+    rx, ry = _segments(removed_edges)
+
+    edge_traces = []
+    edge_traces.append(go.Scatter(
+        x=cx, y=cy,
         line=dict(width=0.8, color="#94a3b8"),
-        hoverinfo="none",
-        mode="lines",
-        showlegend=False,
-    )
+        hoverinfo="none", mode="lines",
+        name="edge: in both", showlegend=bool(common_edges),
+    ))
+    edge_traces.append(go.Scatter(
+        x=ax_, y=ay_,
+        line=dict(width=2.4, color="#0d9488"),  # teal-600 = added
+        hoverinfo="none", mode="lines",
+        name="edge: added", showlegend=bool(added_edges),
+    ))
+    edge_traces.append(go.Scatter(
+        x=rx, y=ry,
+        line=dict(width=2.0, color="#94a3b8", dash="dash"),
+        hoverinfo="none", mode="lines",
+        name="edge: removed", showlegend=bool(removed_edges),
+    ))
 
     # Categorize nodes
     added_nodes = [n for n in G.nodes() if n in nodes_b and n not in nodes_a]
@@ -765,18 +805,49 @@ def _drift_plot(edges_a, edges_b, result_a, result_b) -> go.Figure:
         showlegend=bool(removed_nodes),
     )
 
-    fig = go.Figure(data=[edge_trace, common_trace, added_trace, removed_trace])
+    # Direction arrows colored by edge category
+    arrows = []
+    for src, tgt in common_edges:
+        if src in pos and tgt in pos:
+            arrows.append(dict(
+                ax=pos[src][0], ay=pos[src][1],
+                x=pos[tgt][0],  y=pos[tgt][1],
+                xref="x", yref="y", axref="x", ayref="y",
+                showarrow=True, arrowhead=2, arrowsize=1.0, arrowwidth=1,
+                arrowcolor="#94a3b8", opacity=0.5,
+            ))
+    for src, tgt in added_edges:
+        if src in pos and tgt in pos:
+            arrows.append(dict(
+                ax=pos[src][0], ay=pos[src][1],
+                x=pos[tgt][0],  y=pos[tgt][1],
+                xref="x", yref="y", axref="x", ayref="y",
+                showarrow=True, arrowhead=2, arrowsize=1.2, arrowwidth=1.5,
+                arrowcolor="#0d9488", opacity=0.85,
+            ))
+    for src, tgt in removed_edges:
+        if src in pos and tgt in pos:
+            arrows.append(dict(
+                ax=pos[src][0], ay=pos[src][1],
+                x=pos[tgt][0],  y=pos[tgt][1],
+                xref="x", yref="y", axref="x", ayref="y",
+                showarrow=True, arrowhead=2, arrowsize=1.0, arrowwidth=1,
+                arrowcolor="#94a3b8", opacity=0.45,
+            ))
+
+    fig = go.Figure(data=edge_traces + [common_trace, added_trace, removed_trace])
     fig.update_layout(
         showlegend=True,
         legend=dict(
-            orientation="h", yanchor="bottom", y=-0.12,
+            orientation="h", yanchor="bottom", y=-0.18,
             xanchor="center", x=0.5,
         ),
-        margin=dict(l=10, r=70, t=20, b=20),
+        annotations=arrows,
+        margin=dict(l=10, r=70, t=20, b=40),
         xaxis=dict(showgrid=False, zeroline=False, visible=False),
         yaxis=dict(showgrid=False, zeroline=False, visible=False),
         plot_bgcolor="white",
-        height=520,
+        height=560,
     )
     return fig
 
@@ -909,8 +980,16 @@ CSS = """
 
 
 def _starter_for(mode: str) -> str:
-    """Read the starter file bundled for `mode`."""
+    """Read the 'before' starter file bundled for `mode`."""
     fname = STARTER_BY_MODE.get(mode)
+    if not fname:
+        return ""
+    return (EXAMPLES_DIR / fname).read_text(encoding="utf-8")
+
+
+def _starter_after_for(mode: str) -> str:
+    """Read the 'after' starter file (drift tab right-hand box)."""
+    fname = STARTER_AFTER_BY_MODE.get(mode)
     if not fname:
         return ""
     return (EXAMPLES_DIR / fname).read_text(encoding="utf-8")
@@ -1033,11 +1112,15 @@ with gr.Blocks(title="SemanticEmbed — AI Agent Topology Risk", css=CSS) as dem
     )
 
     # --- Event wiring: Drift tab ---
+    def _on_drift_mode_change(m: str) -> tuple:
+        lang = LANGUAGE_BY_KIND[MODE_TO_KIND[m]]
+        return (
+            gr.update(language=lang, value=_starter_for(m)),
+            gr.update(language=lang, value=_starter_after_for(m)),
+        )
+
     drift_mode.change(
-        fn=lambda m: (gr.update(language=LANGUAGE_BY_KIND[MODE_TO_KIND[m]],
-                                value=_starter_for(m)),
-                      gr.update(language=LANGUAGE_BY_KIND[MODE_TO_KIND[m]],
-                                value=_starter_for(m))),
+        fn=_on_drift_mode_change,
         inputs=drift_mode,
         outputs=[drift_code_a, drift_code_b],
     )
@@ -1047,10 +1130,11 @@ with gr.Blocks(title="SemanticEmbed — AI Agent Topology Risk", css=CSS) as dem
         outputs=[drift_summary_md, drift_plot_out, drift_table_out],
     )
 
-    # Prefill all three code boxes with starter content on first load.
+    # Prefill all three code boxes. Drift's "After" loads the *_after.* file
+    # so the very first Analyze drift produces a non-trivial result.
     demo.load(fn=lambda: _starter_for(MODE_LANGGRAPH), inputs=None, outputs=code_box)
-    demo.load(fn=lambda: _starter_for(MODE_LANGGRAPH), inputs=None, outputs=drift_code_a)
-    demo.load(fn=lambda: _starter_for(MODE_LANGGRAPH), inputs=None, outputs=drift_code_b)
+    demo.load(fn=lambda: _starter_for(MODE_LANGGRAPH),       inputs=None, outputs=drift_code_a)
+    demo.load(fn=lambda: _starter_after_for(MODE_LANGGRAPH), inputs=None, outputs=drift_code_b)
 
     gr.Markdown("""
 ---

@@ -1,0 +1,22 @@
+{
+  "name": "Google Online Boutique — AFTER refactor",
+  "description": "Same Boutique topology, but cart access is consolidated through a new cart-gateway service. Both frontend and checkout-service now go through cart-gateway instead of cart-service directly.",
+  "edges": [
+    {"source": "frontend", "target": "ad-service"},
+    {"source": "frontend", "target": "cart-gateway"},
+    {"source": "frontend", "target": "checkout-service"},
+    {"source": "frontend", "target": "currency-service"},
+    {"source": "frontend", "target": "product-catalog-service"},
+    {"source": "frontend", "target": "recommendation-service"},
+    {"source": "frontend", "target": "shipping-service"},
+    {"source": "checkout-service", "target": "cart-gateway"},
+    {"source": "checkout-service", "target": "currency-service"},
+    {"source": "checkout-service", "target": "email-service"},
+    {"source": "checkout-service", "target": "payment-service"},
+    {"source": "checkout-service", "target": "product-catalog-service"},
+    {"source": "checkout-service", "target": "shipping-service"},
+    {"source": "cart-gateway", "target": "cart-service"},
+    {"source": "recommendation-service", "target": "product-catalog-service"},
+    {"source": "cart-service", "target": "redis-cart"}
+  ]
+}
