@@ -164,6 +164,7 @@ Step-by-step Colab notebooks. Click to open, run in your browser.
 | [06 - CI/CD & Data Pipelines](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/06_cicd_pipelines.ipynb) | CI/CD & ETL | Build graph fragility, pipeline bottlenecks, drift gates |
 | [07 - OpenTelemetry](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/07_opentelemetry.ipynb) | OTel traces | Extract edges from traces, structural analysis, CI/CD gates |
 | [08 - Qwen Compression](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/08_qwen_compression.ipynb) | LLM compression | Structural pruning of Qwen2.5-7B, 10% speedup at Grade A |
+| [09 - Quantum Reachability (IBM Q free tier)](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/09_quantum_reachability.ipynb) | Quantum cross-validation | Continuous-time quantum walk on a directed graph, run on IBM Q Open Plan, cross-checked vs SDK criticality |
 
 ---
 
