@@ -3,7 +3,8 @@
 [![PyPI](https://img.shields.io/pypi/v/semanticembed.svg)](https://pypi.org/project/semanticembed/)
 [![Python](https://img.shields.io/pypi/pyversions/semanticembed.svg)](https://pypi.org/project/semanticembed/)
 [![CI](https://github.com/jmurray10/semanticembed-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/jmurray10/semanticembed-sdk/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Proprietary-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-source--available-blue.svg)](LICENSE-FAQ.md)
+[![Free tier](https://img.shields.io/badge/free%20tier-50%20nodes%2C%20no%20signup-brightgreen.svg)](#install)
 [![Patent Pending](https://img.shields.io/badge/patent-%2363%2F994%2C075-orange.svg)](LICENSE-FAQ.md#patent)
 [![Changelog](https://img.shields.io/badge/changelog-current-success.svg)](CHANGELOG.md)
 
@@ -478,11 +479,15 @@ See [docs/input_format.md](docs/input_format.md) for the full spec.
 
 ## License
 
-SemanticEmbed SDK is **proprietary software with public source code** —
-the same model Stripe, Snowflake, and Anthropic use for their SDKs. Free
-tier covers graphs up to 50 nodes; paid tier unlocks larger graphs and
-continuous monitoring. See [LICENSE](LICENSE) and [LICENSE-FAQ](LICENSE-FAQ.md)
-for terms and common questions.
+**Source-available, with a free tier — no signup, no credit card.** The free
+tier encodes graphs up to 50 nodes; the paid tier unlocks larger graphs and
+continuous monitoring. The client, parsers, and connectors in this repo are
+public source, so you can read exactly what runs and what leaves your machine.
+
+This is the same "source-available SDK, proprietary service" model Stripe,
+Snowflake, and Anthropic use: the encoding algorithm runs server-side and is
+patent-pending (#63/994,075), but everything in this repo is yours to read.
+See [LICENSE](LICENSE) and [LICENSE-FAQ](LICENSE-FAQ.md) for terms.
 
 **Patent pending.** Application #63/994,075.
 
