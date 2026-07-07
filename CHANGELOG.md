@@ -2,6 +2,20 @@
 
 All notable changes to the SemanticEmbed SDK.
 
+## Unreleased
+
+- **`extract.from_terraform`** now resolves `count` / `for_each`-indexed
+  references (`aws_subnet.this[0].id`, `aws_eip.nat[count.index].id`) — the
+  form real modules use almost universally. The ref regex previously matched
+  only `type.name.` and missed them. On terraform-aws-modules/terraform-aws-vpc
+  this goes from 2 to 56 edges.
+- **`extract.from_directory`** now detects Kubernetes manifests by content
+  (`apiVersion` + `kind`) in any directory, not just conventional names like
+  `k8s/` / `manifests/`. Manifests under `release/` or `kubernetes-manifests/`
+  (e.g. GoogleCloudPlatform/microservices-demo) are now picked up.
+- Both surfaced by validating the parsers against real public repos; added
+  `tests/test_extract_regressions.py` to lock them in.
+
 ## 0.7.3 — Modern AutoGen + lenient edge parser
 
 - `from_autogen` now recognizes the autogen-agentchat 0.4+ patterns:
