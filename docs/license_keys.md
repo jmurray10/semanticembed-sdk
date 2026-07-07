@@ -6,7 +6,7 @@ The SemanticEmbed SDK is free for graphs up to 50 nodes. For larger graphs, acti
 
 ## Get a License Key
 
-Email jeffmurr@seas.upenn.edu with your use case and expected node count.
+Email jeff.murray@alumni.upenn.edu with your use case and expected node count.
 Public pricing page coming soon.
 
 ---
@@ -50,4 +50,4 @@ Enterprise plans include priority support, SLA, and on-prem deployment options.
 
 ## Questions
 
-Email jeffmurr@seas.upenn.edu.
+Email jeff.murray@alumni.upenn.edu.

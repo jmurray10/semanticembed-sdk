@@ -157,7 +157,7 @@ publicly available tools:
    a sanity check.
 
 We're glad to walk a design partner through this on their own data;
-email **jeffmurr@seas.upenn.edu** with `[validation]` in the subject.
+email **jeff.murray@alumni.upenn.edu** with `[validation]` in the subject.
 
 ---
 
@@ -194,5 +194,5 @@ documented above and reproducible end-to-end with this SDK.
 
 ## Questions
 
-Email **jeffmurr@seas.upenn.edu** — happy to walk through the design or
+Email **jeff.murray@alumni.upenn.edu** — happy to walk through the design or
 run a similar experiment on your data.

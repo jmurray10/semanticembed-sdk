@@ -17,7 +17,7 @@ class NodeLimitError(SemanticEmbedError):
         self.limit = limit
         super().__init__(
             f"Graph has {n_nodes} nodes but your plan allows {limit}. "
-            f"Contact jeffmurr@seas.upenn.edu for a license key"
+            f"Contact jeff.murray@alumni.upenn.edu for a license key"
         )
 
 

@@ -245,7 +245,7 @@ Or via environment variable:
 export SEMANTICEMBED_LICENSE_KEY=se-xxxxxxxxxxxxxxxxxxxx
 ```
 
-Contact jeffmurr@seas.upenn.edu for license keys.
+Contact jeff.murray@alumni.upenn.edu for license keys.
 
 ---
 
