@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Thanks for taking the time to report a bug. Please fill in the fields below.
-        For algorithm/encoding/scoring questions, email jeffmurr@seas.upenn.edu — that
+        For algorithm/encoding/scoring questions, email jeff.murray@alumni.upenn.edu — that
         runs server-side and isn't part of this repository.
 
   - type: input

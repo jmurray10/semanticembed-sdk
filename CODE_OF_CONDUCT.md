@@ -30,7 +30,7 @@ Examples of unacceptable behavior:
 ## Enforcement
 
 Instances of unacceptable behavior may be reported to the maintainer at
-**jeffmurr@seas.upenn.edu**. All complaints will be reviewed and
+**jeff.murray@alumni.upenn.edu**. All complaints will be reviewed and
 investigated promptly and fairly.
 
 The maintainer is obligated to respect the privacy and security of the

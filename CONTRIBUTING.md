@@ -67,4 +67,4 @@ git push origin vX.Y.Z
 
 ## Questions
 
-Open a GitHub Discussion or email jeffmurr@seas.upenn.edu.
+Open a GitHub Discussion or email jeff.murray@alumni.upenn.edu.

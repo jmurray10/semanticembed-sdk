@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 If you find a security issue in the SemanticEmbed SDK, please **do not**
-open a public GitHub issue. Email **jeffmurr@seas.upenn.edu** with:
+open a public GitHub issue. Email **jeff.murray@alumni.upenn.edu** with:
 
 - A description of the issue
 - Steps to reproduce (minimum working example)

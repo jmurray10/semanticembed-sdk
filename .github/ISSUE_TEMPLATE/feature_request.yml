@@ -11,7 +11,7 @@ body:
         - **Client improvements** — async, batching, caching, error handling
 
         For changes to the encoding algorithm, risk thresholds, or scoring rules, please email
-        jeffmurr@seas.upenn.edu instead — those run server-side.
+        jeff.murray@alumni.upenn.edu instead — those run server-side.
 
   - type: dropdown
     id: kind
