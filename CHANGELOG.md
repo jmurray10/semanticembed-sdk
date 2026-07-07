@@ -2,7 +2,7 @@
 
 All notable changes to the SemanticEmbed SDK.
 
-## Unreleased
+## 0.7.4 — Terraform count/for_each + Kubernetes auto-detect fixes
 
 - **`extract.from_terraform`** now resolves `count` / `for_each`-indexed
   references (`aws_subnet.this[0].id`, `aws_eip.nat[count.index].id`) — the
