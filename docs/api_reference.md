@@ -430,7 +430,11 @@ edges = se.extract.from_github_actions()
 
 ### `extract.from_terraform(path=".")`
 
-Parse resource cross-references from `.tf` files.
+Parse resource cross-references from `.tf` files. The node label is the
+resource name when that name is unique. When several resources share a
+name (`aws_vpc.this` and `aws_internet_gateway.this`), the label is
+`type.name` so they stay distinct. Real modules often exceed the free-tier
+50-node cap once those names are split apart.
 
 **Returns:** `list[tuple[str, str]]`
 
@@ -502,8 +506,13 @@ edges = se.extract.from_otel_traces("traces.json")
 ### `extract.from_langgraph(path)`
 
 Parse a LangGraph workflow file via AST. Recognizes `add_edge`,
-`add_conditional_edges` (with explicit `path_map`), `set_entry_point`
-(emits `START -> X`), and `set_finish_point` (emits `X -> END`).
+`add_conditional_edges` (with an explicit `path_map`), `set_entry_point`
+(emits `START -> X`), and `set_finish_point` (emits `X -> END`). Also
+`Command(goto=...)`, `Send("node")`, and `-> Command[Literal["a", "b"]]`
+on functions passed to `add_node`. Each `StateGraph` in the file keeps its
+own `START` / `END`. A compiled graph mounted with `add_node` connects
+through that node; `compiled.ainvoke()` inside a node links that node to
+the subgraph entry.
 
 ---
 
@@ -511,7 +520,10 @@ Parse a LangGraph workflow file via AST. Recognizes `add_edge`,
 
 Parse a CrewAI script. Patterns: `Task(agent=X)` produces `X -> task_var`;
 `Task(context=[t1, t2])` produces `t1 -> task_var` / `t2 -> task_var`;
-`Crew(manager_agent=mgr)` adds `mgr -> agent` fan-out.
+`Crew(manager_agent=mgr)` adds `mgr -> agent` fan-out. `@CrewBase` crews
+(`@agent` / `@task` / `@crew`) emit the same agent and context edges,
+chain tasks in method order when the process is sequential, and read
+`context` / `agent` from `config/tasks.yaml`.
 
 ---
 
@@ -535,14 +547,20 @@ Extract module dependency edges from import statements.
 
 ---
 
-### `extract.from_directory(path=".")`
+### `extract.from_directory(path=".", *, include=None, exclude=None)`
 
-Auto-detect and parse all recognized formats in a directory.
+Auto-detect and parse all recognized formats in a directory. `include` and
+`exclude` take source labels (`"docker-compose"`, `"kubernetes"`,
+`"github-actions"`, `"terraform"`, `"python-imports"`, `"package-json"`,
+`"otel-traces"`, `"langgraph"`, `"crewai"`, `"autogen"`, `"aws-cdk"`,
+`"pulumi"`, `"cloudformation"`). A string is one label. `exclude` wins
+when a label is in both. Omit both to parse every recognized source.
 
 **Returns:** `tuple[list[tuple[str, str]], dict[str, int]]` — edges and a dict mapping source format to edge count.
 
 ```python
 edges, sources = se.extract.from_directory(".")
+edges, sources = se.extract.from_directory(".", exclude={"github-actions", "python-imports"})
 print(f"Found {len(edges)} edges from {sources}")
 # Found 23 edges from {'docker-compose': 8, 'python-imports': 15}
 ```

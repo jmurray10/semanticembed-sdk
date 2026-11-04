@@ -2,6 +2,27 @@
 
 All notable changes to the SemanticEmbed SDK.
 
+## Unreleased
+
+- **`extract.from_crewai`** reads `@CrewBase` / `@agent` / `@task` / `@crew`
+  crews: agent-to-task edges, the sequential task chain, YAML and inline
+  `context` dependencies, and `manager_agent` fan-out. crewAI-examples
+  `stock_analysis` goes from 0 to 7 edges and `surprise_trip` from 0 to 5.
+- **`extract.from_langgraph`** reads `Command(goto=...)`,
+  `Command[Literal[...]]`, and `Send(...)`, and keeps a separate `START` /
+  `END` per `StateGraph`. A compiled subgraph mounted with `add_node`, or
+  invoked with `ainvoke` / `invoke` / `stream` / `astream`, is wired to the
+  caller. `open_deep_research` `deep_researcher.py` goes from 6 edges (three
+  graphs sharing one `START`) to 16.
+- **`extract.from_terraform`** labels a resource `type.name` when its short
+  name is shared (`aws_vpc.this` vs `aws_internet_gateway.this`). On
+  terraform-aws-vpc this is 55 edges / 35 nodes with a `this` hub, then
+  104 edges / 86 nodes with no bare `this`. Correct keys put real modules
+  over the free-tier 50-node cap.
+- **`extract.from_directory`** takes `include` and `exclude` source labels.
+  The default still parses every recognized source, including GitHub Actions
+  and Python imports.
+
 ## 0.7.4 — Terraform count/for_each + Kubernetes auto-detect fixes
 
 - **`extract.from_terraform`** now resolves `count` / `for_each`-indexed
