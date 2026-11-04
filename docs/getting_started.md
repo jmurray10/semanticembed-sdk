@@ -46,14 +46,20 @@ print(result.table)
 ```
 Node                                 Depth  Indep   Hier   Thru   Crit    Fan
 -----------------------------------------------------------------------------
-order-service                        0.500  0.000  0.600  0.500  0.122  0.667
-api-gateway                          0.250  0.500  0.400  0.500  0.102  0.667
-payment-service                      0.750  1.000  0.800  0.333  0.061  0.500
-database                             1.000  0.500  1.000  0.167  0.000  0.000
-frontend                             0.000  0.500  0.200  0.167  0.000  1.000
-inventory-service                    0.750  0.000  0.800  0.167  0.000  0.000
-user-service                         0.500  1.000  0.600  0.167  0.000  0.000
+order-service                        0.500  0.000  1.000  0.500  0.122  0.667
+api-gateway                          0.250  0.500  0.333  0.500  0.102  0.667
+payment-service                      0.750  1.000  0.667  0.333  0.061  0.500
+database                             1.000  0.500  0.667  0.167  0.000  0.000
+frontend                             0.000  0.500  0.333  0.167  0.000  1.000
+inventory-service                    0.750  0.000  1.000  0.167  0.000  0.000
+user-service                         0.500  1.000  0.333  0.167  0.000  0.000
+
+Key: Depth=pipeline position, Indep=lateral redundancy (0=chokepoint),
+     Hier=module/community, Thru=traffic share, Crit=path dependency,
+     Fan=broadcaster(1) vs aggregator(0). All values 0-1.
 ```
+
+Numbers above are the hosted API's table for this edge list on 2026-11-04. Hierarchy in particular is not the older 0.600 / 0.400 column.
 
 Sorted by criticality (highest first). All values normalized to [0.0, 1.0].
 
@@ -62,11 +68,11 @@ Sorted by criticality (highest first). All values normalized to [0.0, 1.0].
 ```python
 # Raw vector (list of 6 floats)
 result["api-gateway"]
-# [0.25, 0.5, 0.4, 0.5, 0.102, 0.667]
+# [0.25, 0.5, 0.333, 0.5, 0.102, 0.667]
 
 # Named dimensions (dict)
 result.dimensions("api-gateway")
-# {'depth': 0.25, 'independence': 0.5, 'hierarchy': 0.4,
+# {'depth': 0.25, 'independence': 0.5, 'hierarchy': 0.333,
 #  'throughput': 0.5, 'criticality': 0.102, 'fanout': 0.667}
 ```
 
@@ -77,7 +83,8 @@ result.graph_info
 # {'nodes': 7, 'edges': 6, 'max_depth': 3}
 
 result.encoding_time_ms
-# 0.42
+# Wall-clock milliseconds for the HTTP call, not a server kernel timer.
+# About 370 on 2026-11-04 for this graph. The JSON body has no compute-time field.
 ```
 
 ---

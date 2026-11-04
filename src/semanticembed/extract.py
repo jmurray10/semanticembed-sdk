@@ -106,7 +106,9 @@ def from_kubernetes(path: str = ".") -> list[tuple[str, str]]:
     """Extract service dependency edges from Kubernetes YAML manifests.
 
     Scans for Deployment/Service/Ingress resources and infers edges from
-    label selectors, service references, and ingress backends.
+    label selectors, service references, and ingress backends. A metadata
+    name used by more than one kind is labeled ``Kind/name`` so a Service
+    and a Deployment that share a name do not collapse into a self-loop.
 
     Args:
         path: Path to a YAML file or a directory containing YAML files.
@@ -153,6 +155,27 @@ def from_kubernetes(path: str = ".") -> list[tuple[str, str]]:
         elif kind == "Ingress":
             ingresses.append(res)
 
+    # When a Service and a workload share a metadata name, a bare label
+    # would be a self-loop and get dropped (kubernetes guestbook). Qualify
+    # with the kind only for names that are actually shared.
+    deployment_kinds: dict[str, str] = {}
+    for res in resources:
+        kind = res.get("kind", "")
+        name = res.get("metadata", {}).get("name", "")
+        if kind in ("Deployment", "StatefulSet", "DaemonSet") and name:
+            deployment_kinds[name] = kind
+    name_counts: dict[str, int] = {}
+    for name in list(services) + list(deployments) + [
+        ing.get("metadata", {}).get("name", "") for ing in ingresses
+    ]:
+        if name:
+            name_counts[name] = name_counts.get(name, 0) + 1
+
+    def _k8s_label(kind: str, name: str) -> str:
+        if name_counts.get(name, 0) > 1:
+            return f"{kind}/{name}"
+        return name
+
     edges: list[tuple[str, str]] = []
 
     # Service -> Deployment via selector matching
@@ -168,7 +191,10 @@ def from_kubernetes(path: str = ".") -> list[tuple[str, str]]:
                 .get("labels", {})
             )
             if _selectors_match(svc_selector, dep_labels):
-                edges.append((svc_name, dep_name))
+                edges.append((
+                    _k8s_label("Service", svc_name),
+                    _k8s_label(deployment_kinds.get(dep_name, "Deployment"), dep_name),
+                ))
 
     # Ingress -> Service via backend references
     for ing in ingresses:
@@ -180,7 +206,8 @@ def from_kubernetes(path: str = ".") -> list[tuple[str, str]]:
                 backend = p.get("backend", {})
                 svc_ref = backend.get("service", {}).get("name") or backend.get("serviceName")
                 if svc_ref:
-                    edges.append((ing_name, svc_ref))
+                    target = _k8s_label("Service", svc_ref) if svc_ref in services else svc_ref
+                    edges.append((_k8s_label("Ingress", ing_name), target))
 
     # Env var references between deployments (SERVICE_HOST patterns)
     for dep_name, dep in deployments.items():
@@ -196,7 +223,10 @@ def from_kubernetes(path: str = ".") -> list[tuple[str, str]]:
                 if isinstance(val, str):
                     for svc_name in services:
                         if svc_name in val and svc_name != dep_name:
-                            edges.append((dep_name, svc_name))
+                            edges.append((
+                                _k8s_label(deployment_kinds.get(dep_name, "Deployment"), dep_name),
+                                _k8s_label("Service", svc_name),
+                            ))
 
     return _dedupe(edges)
 
@@ -426,9 +456,44 @@ def from_python_imports(path: str = ".", *, depth: int | None = None) -> list[tu
             local_modules.add(".".join(parts[:i]))
         file_to_module[f] = mod
 
-    import_re = re.compile(
-        r"^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))", re.MULTILINE
-    )
+    from_re = re.compile(r"^\s*from\s+(\.*)([\w.]*)\s+import\b", re.MULTILINE)
+    import_re = re.compile(r"^\s*import\s+([\w.]+)", re.MULTILINE)
+    file_is_package = {
+        f: f.replace("\\", "/").endswith("/__init__.py") or f.endswith("__init__.py")
+        for f in file_to_module
+    }
+
+    def _resolve_import(src_mod: str, is_package: bool, imported: str) -> str | None:
+        """Map an import string to a local module, or None."""
+        if imported.startswith("."):
+            dots = len(imported) - len(imported.lstrip("."))
+            rest = imported.lstrip(".")
+            current = src_mod if is_package else (
+                src_mod.rsplit(".", 1)[0] if "." in src_mod else ""
+            )
+            parts = current.split(".") if current else []
+            levels_up = dots - 1
+            if levels_up:
+                if levels_up > len(parts):
+                    return None
+                parts = parts[:-levels_up]
+            if rest:
+                parts.extend(p for p in rest.split(".") if p)
+            candidate = ".".join(parts)
+            if candidate in local_modules and candidate != src_mod:
+                return candidate
+            return None
+
+        parts = imported.split(".")
+        candidates = [parts]
+        if len(parts) > 1:
+            candidates.append(parts[1:])
+        for candidate_parts in candidates:
+            for i in range(len(candidate_parts), 0, -1):
+                candidate = ".".join(candidate_parts[:i])
+                if candidate in local_modules and candidate != src_mod:
+                    return candidate
+        return None
 
     edges: list[tuple[str, str]] = []
     for f, src_mod in file_to_module.items():
@@ -438,42 +503,30 @@ def from_python_imports(path: str = ".", *, depth: int | None = None) -> list[tu
         except Exception:
             continue
 
+        imported_names: list[str] = []
+        for match in from_re.finditer(content):
+            dots, rest = match.group(1), match.group(2)
+            imported_names.append(f"{dots}{rest}" if dots else rest)
         for match in import_re.finditer(content):
-            imported = match.group(1) or match.group(2)
+            imported_names.append(match.group(1))
+
+        for imported in imported_names:
             if not imported:
                 continue
-            # Check if the imported module is local
-            # Try the full name, then progressively shorter prefixes.
-            # Also try stripping the first component (handles `from myapp.models.user`
-            # when scanning inside the `myapp/` directory where modules are `models.user`).
-            target = None
-            parts = imported.split(".")
-            candidates = [parts]
-            if len(parts) > 1:
-                candidates.append(parts[1:])  # stripped first component
-            for candidate_parts in candidates:
-                for i in range(len(candidate_parts), 0, -1):
-                    candidate = ".".join(candidate_parts[:i])
-                    if candidate in local_modules and candidate != src_mod:
-                        target = candidate
-                        break
-                if target:
-                    break
-            if target:
-                if depth is None:
-                    # Default: short names (last component) for readability
-                    src_short = src_mod.split(".")[-1]
-                    dst_short = target.split(".")[-1]
-                    # If short names collide, use longer qualified names
-                    if src_short == dst_short:
-                        src_short = src_mod
-                        dst_short = target
-                    edges.append((src_short, dst_short))
-                else:
-                    # Roll up to first `depth` components.
-                    src_roll = ".".join(src_mod.split(".")[:depth])
-                    dst_roll = ".".join(target.split(".")[:depth])
-                    edges.append((src_roll, dst_roll))
+            target = _resolve_import(src_mod, file_is_package[f], imported)
+            if not target:
+                continue
+            if depth is None:
+                src_short = src_mod.split(".")[-1]
+                dst_short = target.split(".")[-1]
+                if src_short == dst_short:
+                    src_short = src_mod
+                    dst_short = target
+                edges.append((src_short, dst_short))
+            else:
+                src_roll = ".".join(src_mod.split(".")[:depth])
+                dst_roll = ".".join(target.split(".")[:depth])
+                edges.append((src_roll, dst_roll))
 
     # _dedupe drops self-loops (which depth rollup naturally creates within
     # a single top-level package) and exact duplicates.
@@ -817,17 +870,34 @@ def _python_resource_graph(
         for kw in call.keywords:
             if not kw.arg:
                 continue
-            ref = _ast_str_arg(kw.value)
-            if ref and ref in construct_vars and ref != var_name:
-                edges.append((var_name, ref))
-            # Also handle list/tuple of construct refs
-            if isinstance(kw.value, (ast.List, ast.Tuple)):
-                for elt in kw.value.elts:
-                    ref2 = _ast_str_arg(elt)
-                    if ref2 and ref2 in construct_vars and ref2 != var_name:
-                        edges.append((var_name, ref2))
+            refs = _construct_refs(kw.value, construct_vars)
+            for ref in refs:
+                if ref != var_name:
+                    edges.append((var_name, ref))
 
     return _dedupe(edges)
+
+
+def _construct_refs(expr: ast.expr, construct_vars: set[str]) -> list[str]:
+    """Construct variables a kwarg value points at.
+
+    ``bucket`` and ``bucket.id`` / ``group.id`` both refer to the variable
+    the resource was assigned to. Lists of those are walked too.
+    """
+    if isinstance(expr, (ast.List, ast.Tuple)):
+        found: list[str] = []
+        for elt in expr.elts:
+            found.extend(_construct_refs(elt, construct_vars))
+        return found
+    if isinstance(expr, ast.Name):
+        return [expr.id] if expr.id in construct_vars else []
+    if isinstance(expr, ast.Attribute):
+        root: ast.expr = expr
+        while isinstance(root, ast.Attribute):
+            root = root.value
+        if isinstance(root, ast.Name) and root.id in construct_vars:
+            return [root.id]
+    return []
 
 
 def _looks_like_cdk_call(call: ast.Call) -> bool:

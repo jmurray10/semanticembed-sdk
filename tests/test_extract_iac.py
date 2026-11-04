@@ -113,6 +113,21 @@ class TestPulumi:
         assert ("notif", "bucket") in edges_set
         assert ("notif", "queue") in edges_set
 
+    def test_attribute_ref_points_at_the_construct_variable(self, tmp_path):
+        f = tmp_path / "main.py"
+        f.write_text(textwrap.dedent("""
+            import pulumi_aws as aws
+            group = aws.ec2.SecurityGroup("web-secgrp", description="http")
+            server = aws.ec2.Instance(
+                "web-server-www",
+                vpc_security_group_ids=[group.id],
+                ami=ami.id,
+            )
+        """), encoding="utf-8")
+        edges = {tuple(e) for e in extract.from_pulumi(str(f))}
+        assert ("server", "group") in edges
+        assert ("server", "ami") not in edges
+
 
 # ---------- from_directory auto-detect -----------------------------------
 

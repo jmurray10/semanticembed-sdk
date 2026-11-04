@@ -22,6 +22,21 @@ All notable changes to the SemanticEmbed SDK.
 - **`extract.from_directory`** takes `include` and `exclude` source labels.
   The default still parses every recognized source, including GitHub Actions
   and Python imports.
+- **Kubernetes names that collide** (`Service` and `Deployment` both called
+  `frontend`) are labeled `Kind/name`. Same-name pairs used to become
+  self-loops and disappear. `GoogleCloudPlatform/microservices-demo`
+  `c7cb6d5` `release/` is 28 edges after that, not 17.
+- **Pulumi / CDK kwargs** such as `vpc_security_group_ids=[group.id]` count
+  as a reference to `group`.
+- **Python `from ._native import`** is resolved against the importing package.
+- **Corpus check** (`corpus/manifest.json`, `scripts/corpus_score.py`):
+  held-out extraction precision 1.0 and recall 1.0 on 2026-11-04
+  (25/25 edges). Tuning was 1.0 (58/58). Pinned SHAs matched each repo's
+  HEAD that day. Risk labels are compared to the hosted API and do not
+  match; see `docs/scoring_gaps.md`. The 0.7.4 changelog line "vpc goes
+  from 2 to 56 edges" does not reproduce on vpc `b3abd6df`: the indexed-ref
+  parser before name disambiguation returned 55 edges, and current main
+  returns 104 edges / 86 nodes.
 
 ## 0.7.4 — Terraform count/for_each + Kubernetes auto-detect fixes
 
