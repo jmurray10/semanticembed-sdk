@@ -50,6 +50,8 @@ def test_parser_table_covers_the_public_extractors():
         "python-imports",
         "package-json",
         "package-json-workspaces",
+        "pyproject",
+        "requirements",
         "otel-traces",
         "langgraph",
         "crewai",

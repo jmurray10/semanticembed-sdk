@@ -115,8 +115,6 @@ easier.
 
 ## Fairness controls
 
-Three things we did to avoid cooking the number:
-
 1. **Pre-registration of flags.** The 25 risk flags were generated and
    stored before the ground-truth window started. We did not re-run the
    classifier after seeing problems and pick the best run.
@@ -124,15 +122,16 @@ Three things we did to avoid cooking the number:
    snapshot only. No metric data, no historical incident counts, no
    alert rules. The same algorithm that runs on a brand-new repo's
    `docker-compose.yml` ran here.
-3. **Chance baseline.** Flagging 25 of 108 services uniformly at random
-   hits a problem that names one random service `25/108` ≈ **23.1%** of
-   the time. 79.6 − 23.1 is about 56 points, not 33. The previous
-   "~46% under realistic affected-entity distributions, +33 points"
-   line is not reproducible from the counts published here. The 61.0%
-   degree-centrality comparison is in the same position: the arithmetic
-   79.6 − 61.0 = 18.6 only holds if that 61.0% figure is granted, and
-   the figure is not in this repo. Both comparisons are withdrawn until
-   the underlying problem-to-service map can be shown.
+
+The published chance comparison does not follow from the counts above.
+Flagging 25 of 108 services uniformly at random hits a problem that
+names one random service `25/108` ≈ **23.1%** of the time. 79.6 − 23.1
+is about 56 points, not 33. The earlier "~46% under realistic
+affected-entity distributions, **+33 points**" line needs the
+per-problem entity lists, which are not in this repo. The 61.0%
+degree-centrality figure is in the same position: 79.6 − 61.0 = 18.6
+only if that 61.0% is granted, and it is not published here. Both
+comparisons are withdrawn until that map can be shown.
 
 ---
 

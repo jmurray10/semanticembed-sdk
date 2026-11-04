@@ -17,8 +17,8 @@ All notable changes to the SemanticEmbed SDK.
 - **`extract.from_terraform`** labels a resource `type.name` when its short
   name is shared (`aws_vpc.this` vs `aws_internet_gateway.this`). On
   terraform-aws-vpc this is 55 edges / 35 nodes with a `this` hub, then
-  104 edges / 86 nodes with no bare `this`. Correct keys put real modules
-  over the free-tier 50-node cap.
+  119 edges / 96 nodes with no bare `this` once module blocks are included.
+  Correct keys put real modules over the free-tier 50-node cap.
 - **`extract.from_directory`** takes `include` and `exclude` source labels.
   The default still parses every recognized source, including GitHub Actions
   and Python imports.
@@ -31,20 +31,24 @@ All notable changes to the SemanticEmbed SDK.
 - **Python `from ._native import`** is resolved against the importing package.
 - **Corpus check** (`corpus/manifest.json`, `scripts/corpus_score.py`):
   held-out extraction precision 1.0 and recall 1.0 on 2026-11-04
-  (25/25 edges). Tuning was 1.0 (58/58). Pinned SHAs matched each repo's
-  HEAD that day. Risk labels are compared to the hosted API and do not
+  (55/55 edges, 6 files). Tuning was 1.0 (59/59). The only pin behind
+  HEAD was this repo, and those labeled files did not change edges. Risk labels are compared to the hosted API and do not
   match; see `docs/scoring_gaps.md`. The 0.7.4 changelog line "vpc goes
   from 2 to 56 edges" does not reproduce on vpc `b3abd6df`: the indexed-ref
-  parser before name disambiguation returned 55 edges, and current main
-  returns 104 edges / 86 nodes.
+  parser before name disambiguation returned 55 edges. With module blocks
+  and brace-matched bodies, vpc `b3abd6df` is 119 edges / 96 nodes
+  (root `*.tf` files alone: 93 edges / 73 nodes). `pyproject.toml` and
+  `requirements.txt` are parsers. A `]` inside a requirement extra does
+  not end a multiline TOML array.
 
 ## 0.7.4 — Terraform count/for_each + Kubernetes auto-detect fixes
 
 - **`extract.from_terraform`** now resolves `count` / `for_each`-indexed
   references (`aws_subnet.this[0].id`, `aws_eip.nat[count.index].id`) — the
   form real modules use almost universally. The ref regex previously matched
-  only `type.name.` and missed them. On terraform-aws-modules/terraform-aws-vpc
-  this goes from 2 to 56 edges.
+  only `type.name.` and missed them. The note below this release said
+  that went from 2 to 56 edges; a remeasure of vpc `b3abd6df` is under
+  Unreleased (119 edges / 96 nodes with the current parser).
 - **`extract.from_directory`** now detects Kubernetes manifests by content
   (`apiVersion` + `kind`) in any directory, not just conventional names like
   `k8s/` / `manifests/`. Manifests under `release/` or `kubernetes-manifests/`

@@ -39,6 +39,8 @@ PARSERS = {
     "python-imports": extract.from_python_imports,
     "package-json": extract.from_package_json,
     "package-json-workspaces": extract.from_package_json_workspaces,
+    "pyproject": extract.from_pyproject,
+    "requirements": extract.from_requirements,
     "otel-traces": extract.from_otel_traces,
     "langgraph": extract.from_langgraph,
     "crewai": extract.from_crewai,

@@ -61,6 +61,18 @@
       "url": "https://github.com/aws-cloudformation/aws-cloudformation-templates.git",
       "sha": "a0f43bc6d20813052892546f445037cf84c75b54",
       "split": "held-out"
+    },
+    {
+      "id": "starlette",
+      "url": "https://github.com/encode/starlette.git",
+      "sha": "0f08970e5cce0aec4fc1cea7447c262d741795eb",
+      "split": "held-out"
+    },
+    {
+      "id": "tf-vpc-peering",
+      "url": "https://github.com/cloudposse/terraform-aws-vpc-peering.git",
+      "sha": "39787fec9411d40ddfd36b381fdba9346c5b5f8f",
+      "split": "held-out"
     }
   ],
   "cases": [
@@ -196,7 +208,11 @@
       "split": "tuning",
       "parser": "aws-cdk",
       "path": "tests/fixtures/cdk_app.py",
-      "edges": [["my_fn", "my_role"], ["my_fn", "my_vpc"]]
+      "edges": [
+        ["my_fn", "my_role"],
+        ["my_fn", "my_vpc"],
+        ["my_bucket", "my_fn"]
+      ]
     },
     {
       "id": "sdk-langgraph-example",
@@ -247,7 +263,9 @@
       "path": "aws-py-s3-folder/__main__.py",
       "edges": [
         ["web_site", "web_bucket"],
-        ["public_access_block", "web_bucket"]
+        ["public_access_block", "web_bucket"],
+        ["obj", "web_bucket"],
+        ["bucket_policy", "public_access_block"]
       ]
     },
     {
@@ -286,6 +304,52 @@
         ["TargetAccountLogging", "CentralEventLog"],
         ["TargetAccountLogging", "CentralEventLogPolicy"],
         ["TargetAccountLogging", "CentralEventBus"]
+      ]
+    },
+    {
+      "id": "starlette-pyproject",
+      "repo": "starlette",
+      "split": "held-out",
+      "parser": "pyproject",
+      "path": "pyproject.toml",
+      "edges": [
+        ["starlette", "anyio"],
+        ["starlette", "typing_extensions"],
+        ["starlette", "itsdangerous"],
+        ["starlette", "jinja2"],
+        ["starlette", "opentelemetry-api"],
+        ["starlette", "python-multipart"],
+        ["starlette", "pyyaml"],
+        ["starlette", "httpx"],
+        ["starlette", "httpx2"],
+        ["starlette", "blockbuster"],
+        ["starlette", "coverage"],
+        ["starlette", "importlib-metadata"],
+        ["starlette", "mypy"],
+        ["starlette", "opentelemetry-sdk"],
+        ["starlette", "pytest-codspeed"],
+        ["starlette", "ruff"],
+        ["starlette", "types-PyYAML"],
+        ["starlette", "pytest"],
+        ["starlette", "trio"],
+        ["starlette", "twine"],
+        ["starlette", "mkdocstrings"],
+        ["starlette", "mkdocstrings-python"],
+        ["starlette", "zensical"]
+      ]
+    },
+    {
+      "id": "vpc-peering-modules",
+      "repo": "tf-vpc-peering",
+      "split": "held-out",
+      "parser": "terraform",
+      "path": "examples/complete/main.tf",
+      "edges": [
+        ["requestor_subnets", "requestor_vpc"],
+        ["requestor_subnets_additional", "requestor_vpc"],
+        ["acceptor_subnets", "acceptor_vpc"],
+        ["vpc_peering", "requestor_vpc"],
+        ["vpc_peering", "acceptor_vpc"]
       ]
     }
   ],
