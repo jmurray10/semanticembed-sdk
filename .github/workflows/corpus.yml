@@ -1,0 +1,24 @@
+name: Corpus
+
+# Manual only. Cloning the pinned public repos is not part of every PR.
+on:
+  workflow_dispatch:
+
+jobs:
+  score:
+    name: Score pinned corpus
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev,extract]'
+
+      - name: Score tuning and held-out extraction
+        run: python scripts/corpus_score.py --split all

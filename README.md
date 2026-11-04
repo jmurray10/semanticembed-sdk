@@ -22,7 +22,7 @@ SemanticEmbed computes a 6-dimensional structural encoding for every node in a d
 > - **[Hugging Face Space](https://huggingface.co/spaces/jmurray10/semanticembed-agent-risk)** — zero-install. Paste a LangGraph / CrewAI / AutoGen file, get the encoding + risk findings.
 > - **[Demo dashboard](https://semanticembed-dashboard.vercel.app/)** — interactive 6D explorer with 4 reference apps (sign-in required; click "Try Demo" on the login page for a no-account walkthrough).
 
-> **Validated against production incidents.** In a blind test against a live production Dynatrace environment (108 services, 569 topology-relevant incidents over 30 days), **79.6%** of incidents (453/569) occurred on nodes that 6D structural analysis had flagged as risky — from the call graph alone, before any incident occurred. See [validation methodology](docs/validation_methodology.md).
+> **One private-environment blind test.** On one Dynatrace tenant (108 services, 569 topology-relevant incidents over 30 days), **79.6%** of those incidents (453/569) were on nodes the hosted scorer had flagged. That run is not reproducible from this repo: the matcher and the risk thresholds live in a private service. See [validation methodology](docs/validation_methodology.md). It is one tenant, not a general accuracy number.
 
 ---
 
@@ -31,10 +31,10 @@ SemanticEmbed computes a 6-dimensional structural encoding for every node in a d
 Observability tools tell you **what broke**. SemanticEmbed tells you **what will break** — from topology alone.
 
 - **No agents, no instrumentation** — just an edge list
-- **Sub-millisecond server-side compute** — the encoding kernel itself runs in <1 ms on a 100-node graph; full HTTP round-trip via the cloud API is typically 0.5–2 s including network
+- **Sub-millisecond server-side compute is not something this SDK can show.** `result.encoding_time_ms` is the HTTP round trip, not a kernel timer. The encode response has no separate compute-time field. From this environment on 2026-11-04 a 7-node graph returned in about 0.3–0.4 s, which is faster than the old "typically 0.5–2 s" line. A 100-node kernel time is not measurable on the free tier (the client refuses graphs over 50 nodes before the request).
 - **Works on any directed graph** — AI agent pipelines, microservices, data workflows, CI/CD
 - **Complementary structural axes** — six dimensions, each captures risk signals the others cannot
-- **14 deterministic edge parsers + 3 live connectors** — go from real infra to encoded result in 2 lines
+- **14 deterministic edge parsers + 3 live connectors** — docker-compose, Kubernetes, GitHub Actions, Terraform, CloudFormation, CDK, Pulumi, Python imports, package.json, npm workspaces, OTel JSON, LangGraph, CrewAI, AutoGen; plus Dynatrace, Honeycomb, and Datadog clients
 
 ---
 
@@ -50,38 +50,62 @@ pip install 'semanticembed[agent-claude]'  # adds Claude agent CLI
 
 ---
 
-## Quick Start — from real infra to risk in 2 lines
+## Quick Start
+
+`from_directory` discovers edges. `encode` sends the edge list to the hosted API. Risk text is produced on the server; this package only prints it.
+
+The block below is the report the API returned on **2026-11-04** for this edge list. If the server scorer changes, the words change. It is not a fixture baked into the client.
 
 ```python
 import semanticembed as se
 
-# Auto-discover edges from any directory: docker-compose, k8s, terraform,
-# CloudFormation, AWS CDK, Pulumi, GitHub Actions, package.json,
-# pyproject.toml, OTel traces, Python imports, LangGraph, CrewAI, AutoGen.
-edges, sources = se.extract.from_directory(".")
-print(f"Found {len(edges)} edges from {sources}")
-
-# 6D encode + structural risk analysis (sub-millisecond on the server side).
+edges = [
+    ("frontend", "api-gateway"),
+    ("api-gateway", "order-service"),
+    ("api-gateway", "user-service"),
+    ("order-service", "payment-service"),
+    ("order-service", "inventory-service"),
+    ("payment-service", "database"),
+]
 result = se.encode(edges)
-print(result.table)
 print(se.report(result))
 ```
 
-Output:
+Output (hosted API, 2026-11-04):
 
 ```
 STRUCTURAL RISK REPORT
 ======================
 
-AMPLIFICATION RISKS (high fanout, high criticality):
-  - api-gateway    | fanout=0.667 | criticality=0.556
+SINGLE POINT OF FAILURE:
+  - order-service                  | order-service has high structural criticality (0.122) with limited lateral redundancy (independence=0.00). Failure here impacts 6 transitive path pairs.
+  - api-gateway                    | api-gateway has high structural criticality (0.102) with limited lateral redundancy (independence=0.50). Failure here impacts 5 transitive path pairs.
 
-CONVERGENCE SINKS (low independence, many upstream callers):
-  - database       | independence=0.000
+MONITORING GAP CANDIDATE:
+  - order-service                  | order-service has high criticality (0.122) but sits at depth 0.50, not at the service mesh edge. Likely missing from edge-level observability.
+  - api-gateway                    | api-gateway has high criticality (0.102) but sits at depth 0.25, not at the service mesh edge. Likely missing from edge-level observability.
+  - payment-service                | payment-service has high criticality (0.061) but sits at depth 0.75, not at the service mesh edge. Likely missing from edge-level observability.
 
-STRUCTURAL SPOF (low independence, high upstream dependency):
-  - api-gateway    | independence=0.000 | every request flows through this node
+DEEP BOTTLENECK:
+  - order-service                  | order-service is a bottleneck deep in the pipeline (depth=0.50, criticality=0.122). Failures here are harder to diagnose from edge monitoring.
+  - payment-service                | payment-service is a bottleneck deep in the pipeline (depth=0.75, criticality=0.061). Failures here are harder to diagnose from edge monitoring.
+
+WHAT TO DO
+----------
+  >> api-gateway, order-service: Add a redundant path or fallback service so this node is not the only option at its pipeline stage.
+  >> api-gateway, order-service, payment-service: Ensure this node has dedicated monitoring. It sits on critical paths but is not at the service edge, so it may be missing from your dashboards.
+  >> order-service, payment-service: Add health checks and timeouts. Deep bottlenecks are hard to diagnose from edge monitoring — ensure this node has dedicated alerting.
+
+Total: 7 risks (5 critical, 2 warning, 0 info)
 ```
+
+Directory scan is the same `encode` call after `edges, sources = se.extract.from_directory(".")`. There is no `pyproject.toml` parser. The 14 parsers are docker-compose, Kubernetes, GitHub Actions, Terraform, CloudFormation, AWS CDK (Python), Pulumi (Python), Python imports, `package.json`, npm workspaces, OpenTelemetry JSON, LangGraph, CrewAI, and AutoGen. The three live connectors are Dynatrace, Honeycomb, and Datadog; this check did not call those APIs.
+
+**Held-out extraction, 2026-11-04.** Hand-labeled files, scored once after the tuning files already matched. Micro precision **1.0**, recall **1.0** (25/25 edges, 4 files). Tuning was also 1.0 (58/58 edges, 13 files). Pinned SHAs are in [corpus/manifest.json](corpus/manifest.json). Re-run with `python scripts/corpus_score.py --split held-out`. Every pinned SHA was still the repo HEAD that day, so the pinned-vs-HEAD edge delta was empty. `package.json` workspaces are covered by a unit test, not by a pinned monorepo in that manifest.
+
+Two held-out files sit in repos that also contain a tuning file (`crewAI-examples` recruitment crew, `pulumi/examples` S3 website). Those files were not used to edit the parsers.
+
+Hosted risk scoring does not match the hand labels on the voting-app shape, on a symmetric `s1`/`s2` graph, or on the open_deep_research cycles. That logic is not in this repo. Repros: [docs/scoring_gaps.md](docs/scoring_gaps.md).
 
 **Or try it without installing** — [open the Quickstart in Google Colab](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/01_quickstart.ipynb).
 
@@ -187,6 +211,10 @@ edges = se.extract.from_github_actions(".github/workflows")
 
 # From Terraform
 edges = se.extract.from_terraform("infra/")
+# Resource names that collide (`aws_vpc.this` and `aws_internet_gateway.this`)
+# are labeled `type.name`. On terraform-aws-modules/terraform-aws-vpc
+# `b3abd6df` that is 104 edges and 86 nodes, over the free-tier cap.
+# The root `*.tf` files alone are 74 nodes. A license is required to encode them.
 
 # From CloudFormation (YAML or JSON)
 edges = se.extract.from_cloudformation("template.yaml")

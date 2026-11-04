@@ -78,3 +78,27 @@ class TestFromDirectoryK8sDiscovery:
         edges, sources = extract.from_directory(str(tmp_path))
         assert "kubernetes" in sources
         assert ("web", "web-deploy") in {tuple(e) for e in edges}
+
+    def test_same_name_service_and_deployment_stay_distinct(self, tmp_path):
+        _write(tmp_path / "guestbook.yaml", """\
+            apiVersion: v1
+            kind: Service
+            metadata:
+              name: frontend
+            spec:
+              selector:
+                app: guestbook
+            ---
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: frontend
+            spec:
+              template:
+                metadata:
+                  labels:
+                    app: guestbook
+        """)
+        edges = {tuple(e) for e in extract.from_kubernetes(str(tmp_path / "guestbook.yaml"))}
+        assert ("Service/frontend", "Deployment/frontend") in edges
+        assert ("frontend", "frontend") not in edges

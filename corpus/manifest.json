@@ -1,0 +1,351 @@
+{
+  "labeled_on": "2026-11-04",
+  "note": "Gold edges were read off the pinned files. Parser code does not branch on these repository or node names. held-out cases are scored only after tuning labels match.",
+  "repos": [
+    {
+      "id": "voting-app",
+      "url": "https://github.com/dockersamples/example-voting-app.git",
+      "sha": "63e9150ca17af4ed05880d4245e486481f73fcb4",
+      "split": "tuning"
+    },
+    {
+      "id": "k8s-examples",
+      "url": "https://github.com/kubernetes/examples.git",
+      "sha": "22934a040acbb0c0aa103023ccbd871507bf17f6",
+      "split": "tuning"
+    },
+    {
+      "id": "terraform-aws-vpc",
+      "url": "https://github.com/terraform-aws-modules/terraform-aws-vpc.git",
+      "sha": "b3abd6df2ecf052451a361ed55b8f06f8742a795",
+      "split": "tuning"
+    },
+    {
+      "id": "pulumi-examples",
+      "url": "https://github.com/pulumi/examples.git",
+      "sha": "11808adad740540899dd0d1ce2de86ab46c94825",
+      "split": "tuning"
+    },
+    {
+      "id": "crewai-examples",
+      "url": "https://github.com/crewAIInc/crewAI-examples.git",
+      "sha": "da94a91e691e1cf5b3151416bb15b5b62729bea8",
+      "split": "tuning"
+    },
+    {
+      "id": "open-deep-research",
+      "url": "https://github.com/langchain-ai/open_deep_research.git",
+      "sha": "1b7d2e80db9faa586165c60e09096dbbfd483a64",
+      "split": "tuning"
+    },
+    {
+      "id": "markupsafe",
+      "url": "https://github.com/pallets/markupsafe.git",
+      "sha": "4e111271b1494995708a9e878a10829b5e10c7ba",
+      "split": "tuning"
+    },
+    {
+      "id": "semanticembed-sdk",
+      "url": "https://github.com/jmurray10/semanticembed-sdk.git",
+      "sha": "a612ceca939969286f03c1f73085b0035fc83ac1",
+      "split": "tuning"
+    },
+    {
+      "id": "sock-shop",
+      "url": "https://github.com/microservices-demo/microservices-demo.git",
+      "sha": "9dff06fae4981921caec6a62393a6ebfce4b3e3f",
+      "split": "held-out"
+    },
+    {
+      "id": "cfn-templates",
+      "url": "https://github.com/aws-cloudformation/aws-cloudformation-templates.git",
+      "sha": "a0f43bc6d20813052892546f445037cf84c75b54",
+      "split": "held-out"
+    }
+  ],
+  "cases": [
+    {
+      "id": "voting-compose",
+      "repo": "voting-app",
+      "split": "tuning",
+      "parser": "docker-compose",
+      "path": "docker-compose.yml",
+      "edges": [
+        ["vote", "redis"],
+        ["result", "db"],
+        ["worker", "redis"],
+        ["worker", "db"],
+        ["seed", "vote"]
+      ]
+    },
+    {
+      "id": "guestbook-k8s",
+      "repo": "k8s-examples",
+      "split": "tuning",
+      "parser": "kubernetes",
+      "path": "web/guestbook/all-in-one/guestbook-all-in-one.yaml",
+      "edges": [
+        ["Service/redis-leader", "Deployment/redis-leader"],
+        ["Service/redis-follower", "Deployment/redis-follower"],
+        ["Service/frontend", "Deployment/frontend"]
+      ]
+    },
+    {
+      "id": "voting-gha",
+      "repo": "voting-app",
+      "split": "tuning",
+      "parser": "github-actions",
+      "path": ".github/workflows/call-docker-build-vote.yaml",
+      "edges": [["Build Vote", "Build Vote/call-docker-build"]]
+    },
+    {
+      "id": "vpc-flow-logs",
+      "repo": "terraform-aws-vpc",
+      "split": "tuning",
+      "parser": "terraform",
+      "path": "vpc-flow-logs.tf",
+      "edges": [
+        ["aws_iam_role_policy_attachment.vpc_flow_log_cloudwatch", "aws_iam_role.vpc_flow_log_cloudwatch"],
+        ["aws_iam_role_policy_attachment.vpc_flow_log_cloudwatch", "aws_iam_policy.vpc_flow_log_cloudwatch"]
+      ]
+    },
+    {
+      "id": "pulumi-webserver",
+      "repo": "pulumi-examples",
+      "split": "tuning",
+      "parser": "pulumi",
+      "path": "aws-py-webserver/__main__.py",
+      "edges": [["server", "group"]]
+    },
+    {
+      "id": "stock-analysis-crew",
+      "repo": "crewai-examples",
+      "split": "tuning",
+      "parser": "crewai",
+      "path": "crews/stock_analysis/src/stock_analysis/crew.py",
+      "edges": [
+        ["financial_analyst_agent", "financial_analysis"],
+        ["research_analyst_agent", "research"],
+        ["financial_analyst_agent", "filings_analysis"],
+        ["investment_advisor_agent", "recommend"],
+        ["financial_analysis", "research"],
+        ["research", "filings_analysis"],
+        ["filings_analysis", "recommend"]
+      ]
+    },
+    {
+      "id": "deep-researcher",
+      "repo": "open-deep-research",
+      "split": "tuning",
+      "parser": "langgraph",
+      "path": "src/open_deep_research/deep_researcher.py",
+      "edges": [
+        ["START", "clarify_with_user"],
+        ["clarify_with_user", "write_research_brief"],
+        ["clarify_with_user", "END"],
+        ["write_research_brief", "research_supervisor"],
+        ["research_supervisor", "final_report_generation"],
+        ["final_report_generation", "END"],
+        ["research_supervisor", "supervisor"],
+        ["supervisor", "supervisor_tools"],
+        ["supervisor_tools", "supervisor"],
+        ["supervisor_tools", "research_supervisor"],
+        ["supervisor_tools", "researcher"],
+        ["START[researcher_builder]", "researcher"],
+        ["researcher", "researcher_tools"],
+        ["researcher_tools", "researcher"],
+        ["researcher_tools", "compress_research"],
+        ["compress_research", "END[researcher_builder]"]
+      ]
+    },
+    {
+      "id": "markupsafe-imports",
+      "repo": "markupsafe",
+      "split": "tuning",
+      "parser": "python-imports",
+      "path": "src",
+      "edges": [["markupsafe", "_native"]]
+    },
+    {
+      "id": "voting-result-package",
+      "repo": "voting-app",
+      "split": "tuning",
+      "parser": "package-json",
+      "path": "result/package.json",
+      "edges": [
+        ["result", "async"],
+        ["result", "cookie-parser"],
+        ["result", "express"],
+        ["result", "method-override"],
+        ["result", "pg"],
+        ["result", "socket.io"],
+        ["result", "stoppable"]
+      ]
+    },
+    {
+      "id": "sdk-otel-fixture",
+      "repo": "semanticembed-sdk",
+      "split": "tuning",
+      "parser": "otel-traces",
+      "path": "tests/fixtures/trace_otlp.json",
+      "edges": [["frontend", "auth"], ["auth", "db"]]
+    },
+    {
+      "id": "sdk-cdk-fixture",
+      "repo": "semanticembed-sdk",
+      "split": "tuning",
+      "parser": "aws-cdk",
+      "path": "tests/fixtures/cdk_app.py",
+      "edges": [["my_fn", "my_role"], ["my_fn", "my_vpc"]]
+    },
+    {
+      "id": "sdk-langgraph-example",
+      "repo": "semanticembed-sdk",
+      "split": "tuning",
+      "parser": "langgraph",
+      "path": "examples/langgraph_research_agent.py",
+      "edges": [
+        ["START", "planner"],
+        ["planner", "researcher"],
+        ["researcher", "writer"],
+        ["writer", "critic"],
+        ["critic", "writer"],
+        ["critic", "END"]
+      ]
+    },
+    {
+      "id": "sdk-autogen-example",
+      "repo": "semanticembed-sdk",
+      "split": "tuning",
+      "parser": "autogen",
+      "path": "examples/autogen_codereview.py",
+      "edges": [
+        ["manager", "reviewer"],
+        ["manager", "tester"],
+        ["manager", "security"],
+        ["manager", "doc"],
+        ["user_proxy", "manager"]
+      ]
+    },
+    {
+      "id": "sock-shop-gha",
+      "repo": "sock-shop",
+      "split": "held-out",
+      "parser": "github-actions",
+      "path": ".github/workflows/main.yaml",
+      "edges": [
+        ["ci", "ci/complete-demo-sync-check"],
+        ["ci/complete-demo-sync-check", "ci/deployments-tests"],
+        ["ci", "ci/build-test-images"]
+      ]
+    },
+    {
+      "id": "pulumi-s3-website",
+      "repo": "pulumi-examples",
+      "split": "held-out",
+      "parser": "pulumi",
+      "path": "aws-py-s3-folder/__main__.py",
+      "edges": [
+        ["web_site", "web_bucket"],
+        ["public_access_block", "web_bucket"]
+      ]
+    },
+    {
+      "id": "recruitment-crew",
+      "repo": "crewai-examples",
+      "split": "held-out",
+      "parser": "crewai",
+      "path": "crews/recruitment/src/recruitment/crew.py",
+      "edges": [
+        ["researcher", "research_candidates_task"],
+        ["matcher", "match_and_score_candidates_task"],
+        ["communicator", "outreach_strategy_task"],
+        ["reporter", "report_candidates_task"],
+        ["research_candidates_task", "match_and_score_candidates_task"],
+        ["match_and_score_candidates_task", "outreach_strategy_task"],
+        ["outreach_strategy_task", "report_candidates_task"],
+        ["research_candidates_task", "report_candidates_task"],
+        ["match_and_score_candidates_task", "report_candidates_task"]
+      ]
+    },
+    {
+      "id": "cfn-central-log-bus",
+      "repo": "cfn-templates",
+      "split": "held-out",
+      "parser": "cloudformation",
+      "path": "CloudFormation/StackSets/templates/log-setup-management.yaml",
+      "edges": [
+        ["CentralEventBus", "DeadLetterQueue"],
+        ["CentralEventBusPolicy", "CentralEventBus"],
+        ["CentralEventLog", "CentralEventBus"],
+        ["CentralEventLog", "CentralEventLogKey"],
+        ["CentralEventLogPolicy", "CentralEventLog"],
+        ["CentralEventRule", "CentralEventLog"],
+        ["CentralEventRule", "DeadLetterQueue"],
+        ["TargetAccountLogging", "CentralEventRule"],
+        ["TargetAccountLogging", "CentralEventLog"],
+        ["TargetAccountLogging", "CentralEventLogPolicy"],
+        ["TargetAccountLogging", "CentralEventBus"]
+      ]
+    }
+  ],
+  "risk_cases": [
+    {
+      "id": "voting-app-shape",
+      "split": "tuning",
+      "edges": [
+        ["vote", "redis"],
+        ["worker", "redis"],
+        ["worker", "db"],
+        ["result", "db"]
+      ],
+      "expected": [
+        {"node": "redis", "category": "CONVERGENCE_SINK"},
+        {"node": "db", "category": "CONVERGENCE_SINK"}
+      ],
+      "note": "redis and db each have two callers. Hand label, not a server threshold."
+    },
+    {
+      "id": "symmetric-services",
+      "split": "tuning",
+      "edges": [
+        ["gateway", "s1"],
+        ["gateway", "s2"],
+        ["s1", "db"],
+        ["s2", "db"]
+      ],
+      "expected": [
+        {"node": "s1", "category": "SINGLE_POINT_OF_FAILURE"},
+        {"node": "s2", "category": "SINGLE_POINT_OF_FAILURE"}
+      ],
+      "note": "s1 and s2 have the same in-degree and out-degree. A tie should not drop one."
+    },
+    {
+      "id": "deep-researcher-cycles",
+      "split": "tuning",
+      "edges": [
+        ["START", "clarify_with_user"],
+        ["clarify_with_user", "write_research_brief"],
+        ["clarify_with_user", "END"],
+        ["write_research_brief", "research_supervisor"],
+        ["research_supervisor", "final_report_generation"],
+        ["final_report_generation", "END"],
+        ["research_supervisor", "supervisor"],
+        ["supervisor", "supervisor_tools"],
+        ["supervisor_tools", "supervisor"],
+        ["supervisor_tools", "research_supervisor"],
+        ["supervisor_tools", "researcher"],
+        ["START[researcher_builder]", "researcher"],
+        ["researcher", "researcher_tools"],
+        ["researcher_tools", "researcher"],
+        ["researcher_tools", "compress_research"],
+        ["compress_research", "END[researcher_builder]"]
+      ],
+      "expected": [
+        {"node": "supervisor", "category": "AMPLIFICATION_RISK"},
+        {"node": "researcher", "category": "AMPLIFICATION_RISK"}
+      ],
+      "note": "Mutual tool loops. The server category list has no CYCLE label; AMPLIFICATION_RISK is the closest published category. Agreement is reported, not tuned."
+    }
+  ]
+}

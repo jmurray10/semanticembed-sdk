@@ -78,6 +78,21 @@ class TestPythonImportsDepth:
         edges_set = {tuple(e) for e in edges}
         assert ("user", "gateway") in edges_set
 
+    def test_workspace_packages_depend_on_each_other(self, tmp_path):
+        (tmp_path / "package.json").write_text(
+            '{"name": "app", "workspaces": ["packages/*"]}\n', encoding="utf-8"
+        )
+        pkg = tmp_path / "packages"
+        (pkg / "a").mkdir(parents=True)
+        (pkg / "b").mkdir(parents=True)
+        (pkg / "a" / "package.json").write_text(
+            '{"name": "a", "dependencies": {"b": "1.0.0"}}\n', encoding="utf-8"
+        )
+        (pkg / "b" / "package.json").write_text('{"name": "b"}\n', encoding="utf-8")
+        from semanticembed import extract
+        edges = {tuple(e) for e in extract.from_package_json_workspaces(str(tmp_path))}
+        assert ("a", "b") in edges
+
     def test_depth_1_rolls_to_top_level(self, tmp_path):
         from semanticembed import extract
         # Single top-level package -> all internal edges are self-loops -> dropped.
@@ -92,6 +107,15 @@ class TestPythonImportsDepth:
         edges = extract.from_python_imports(str(tmp_path), depth=2)
         edges_set = {tuple(e) for e in edges}
         assert ("services.auth", "services.payments") in edges_set
+
+    def test_relative_import_resolves_inside_package(self, tmp_path):
+        pkg = tmp_path / "src" / "markupsafe"
+        pkg.mkdir(parents=True)
+        (pkg / "__init__.py").write_text("from ._native import escape\n", encoding="utf-8")
+        (pkg / "_native.py").write_text("def escape(s):\n    return s\n", encoding="utf-8")
+        from semanticembed import extract
+        edges = {tuple(e) for e in extract.from_python_imports(str(tmp_path / "src"))}
+        assert ("markupsafe", "_native") in edges
 
 
 class TestFindEdges:

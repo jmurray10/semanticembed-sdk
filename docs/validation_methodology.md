@@ -1,9 +1,8 @@
 # Validation Methodology
 
-This document explains how the **79.6% topology hit rate** claim in the
-README was produced. The reproduction harness itself runs against a live
-Dynatrace tenant (and lives in our private repo for that reason), but the
-methodology, the fairness controls, and the math are public.
+This document explains how the **79.6% topology hit rate** was produced
+for one Dynatrace tenant. It is a single private-environment blind test.
+The reproduction harness is not in this repo.
 
 ---
 
@@ -125,18 +124,15 @@ Three things we did to avoid cooking the number:
    snapshot only. No metric data, no historical incident counts, no
    alert rules. The same algorithm that runs on a brand-new repo's
    `docker-compose.yml` ran here.
-3. **Comparison to coin-flip baseline.** If we'd flagged 25/108 services
-   uniformly at random, the expected hit rate (probability that a
-   random problem lands on at least one of 25 random services) would be
-   ~46% under realistic problem-affected-entity distributions on this
-   tenant. 79.6% is **+33 points** above chance.
-
-A stronger comparison would be against degree centrality alone. We ran
-that too: degree centrality flagged the top-25 by in-degree, and got
-**61.0%** topology hit rate on the same 569 problems. 6D's 79.6% is
-**+18.6 points** above the most obvious alternative — that's the
-"orthogonal axes capture signals centrality misses" claim, made
-concrete.
+3. **Chance baseline.** Flagging 25 of 108 services uniformly at random
+   hits a problem that names one random service `25/108` ≈ **23.1%** of
+   the time. 79.6 − 23.1 is about 56 points, not 33. The previous
+   "~46% under realistic affected-entity distributions, +33 points"
+   line is not reproducible from the counts published here. The 61.0%
+   degree-centrality comparison is in the same position: the arithmetic
+   79.6 − 61.0 = 18.6 only holds if that 61.0% figure is granted, and
+   the figure is not in this repo. Both comparisons are withdrawn until
+   the underlying problem-to-service map can be shown.
 
 ---
 
