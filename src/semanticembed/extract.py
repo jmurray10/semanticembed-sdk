@@ -7,6 +7,8 @@ Supported formats:
     - Terraform (resource references)
     - Python imports (module dependency graph)
     - package.json (Node.js dependencies, monorepo workspaces)
+    - pyproject.toml (PEP 621, dependency-groups, Poetry)
+    - requirements.txt
     - Automatic directory scanning
 """
 
@@ -156,8 +158,8 @@ def from_kubernetes(path: str = ".") -> list[tuple[str, str]]:
             ingresses.append(res)
 
     # When a Service and a workload share a metadata name, a bare label
-    # would be a self-loop and get dropped (kubernetes guestbook). Qualify
-    # with the kind only for names that are actually shared.
+    # would be a self-loop and get dropped. Qualify with the kind only for
+    # names that are actually shared.
     deployment_kinds: dict[str, str] = {}
     for res in resources:
         kind = res.get("kind", "")
@@ -305,22 +307,22 @@ def from_github_actions(path: str = ".github/workflows") -> list[tuple[str, str]
 def from_terraform(path: str = ".") -> list[tuple[str, str]]:
     """Extract resource dependency edges from Terraform files.
 
-    Parses ``resource`` blocks and finds cross-resource references
-    (``resource_type.resource_name``) to infer dependencies.
+    Parses ``resource`` and ``module`` blocks. A block depends on every
+    ``type.name`` resource or ``module.name`` it references. Each block body
+    stops at its own closing brace, so a later block is not attributed to
+    the previous resource. Heredocs and comments are not treated as braces.
+
+    Node labels are the resource or module name when that name is unique.
+    When several blocks share a name, the label is the full address
+    (``aws_vpc.this``, ``module.vpc``). Distinct keys raise the node count;
+    real modules often pass the free-tier 50-node cap.
 
     Args:
         path: Path to a .tf file or a directory containing .tf files.
 
-    Node labels are the resource name (``web``) when that name is unique in
-    the scanned files. When several resources share a name — the ``this``
-    convention in terraform-aws-modules — the label is ``type.name``
-    (``aws_vpc.this``) so those resources do not collapse into one node.
-    Distinct keys raise the node count; real modules often pass the free-tier
-    50-node cap once names are disambiguated.
-
     Returns:
-        List of (source, target) edge tuples. The source is the resource
-        that contains the reference; the target is the resource it references.
+        List of (source, target) edge tuples. The source is the block that
+        contains the reference; the target is the block it references.
 
     Example::
 
@@ -333,16 +335,11 @@ def from_terraform(path: str = ".") -> list[tuple[str, str]]:
     else:
         files = [path]
 
-    # Collect all resource names
-    resource_pattern = re.compile(
-        r'resource\s+"([^"]+)"\s+"([^"]+)"\s*\{', re.MULTILINE
-    )
-    # Match `type.name` optionally followed by a `[index]` (count / for_each),
-    # e.g. `aws_subnet.this[0].id` or `aws_eip.nat[count.index].id`.
-    ref_pattern = re.compile(r"(\w+\.\w+)(?:\[[^\]]*\])?\.")
+    # `type.name` or `module.name`, optionally indexed, then an attribute.
+    ref_pattern = re.compile(r"((?:module\.)?\w+\.\w+)(?:\[[^\]]*\])?\.")
 
-    resources: dict[str, str] = {}  # "type.name" -> short label
-    file_contents: dict[str, str] = {}
+    addresses: dict[str, str] = {}
+    blocks: list[tuple[str, str]] = []
 
     for f in files:
         try:
@@ -350,42 +347,128 @@ def from_terraform(path: str = ".") -> list[tuple[str, str]]:
                 content = fh.read()
         except Exception:
             continue
-        file_contents[f] = content
-        for match in resource_pattern.finditer(content):
-            res_type, res_name = match.group(1), match.group(2)
-            full_name = f"{res_type}.{res_name}"
-            resources[full_name] = res_name
+        for address, short, body in _tf_blocks(content):
+            addresses[address] = short
+            blocks.append((address, body))
 
-    # Bare names collide across resource types (`aws_vpc.this` and
-    # `aws_internet_gateway.this`). Count distinct type.name keys, then
-    # expand every colliding short name to type.name.
     name_counts: dict[str, int] = {}
-    for short in resources.values():
+    for short in addresses.values():
         name_counts[short] = name_counts.get(short, 0) + 1
-    for full, short in list(resources.items()):
+    for full, short in list(addresses.items()):
         if name_counts[short] > 1:
-            resources[full] = full
+            addresses[full] = full
 
-    # Find references between resources
     edges: list[tuple[str, str]] = []
-    for f, content in file_contents.items():
-        # Split by resource blocks
-        blocks = re.split(r'(resource\s+"[^"]+"\s+"[^"]+"\s*\{)', content)
-        current_resource = None
-        for block in blocks:
-            res_match = resource_pattern.match(block.strip())
-            if res_match:
-                current_resource = f"{res_match.group(1)}.{res_match.group(2)}"
-                continue
-            if current_resource and current_resource in resources:
-                for ref_match in ref_pattern.finditer(block):
-                    ref = ref_match.group(1)
-                    if ref in resources and ref != current_resource:
-                        src_label = resources[current_resource]
-                        dst_label = resources[ref]
-                        edges.append((src_label, dst_label))
+    for address, body in blocks:
+        if address not in addresses:
+            continue
+        src_label = addresses[address]
+        for ref_match in ref_pattern.finditer(body):
+            ref = ref_match.group(1)
+            if ref in addresses and ref != address:
+                edges.append((src_label, addresses[ref]))
 
     return _dedupe(edges)
+
+
+def _tf_blocks(content: str):
+    """Yield ``(address, short_name, body)`` for resource and module blocks."""
+    header = re.compile(
+        r'(resource|module)\s+"([^"]+)"(?:\s+"([^"]+)")?\s*\{'
+    )
+    pos = 0
+    while True:
+        match = header.search(content, pos)
+        if not match:
+            break
+        kind, first, second = match.group(1), match.group(2), match.group(3)
+        if kind == "resource" and second:
+            address, short = f"{first}.{second}", second
+        elif kind == "module":
+            address, short = f"module.{first}", first
+        else:
+            pos = match.end()
+            continue
+        body_start = match.end()
+        end = _tf_block_end(content, body_start)
+        yield address, short, content[body_start:end]
+        pos = end + 1
+
+
+def _tf_skip_heredoc(content: str, start: int) -> int:
+    """Return the index just after a ``<<MARKER`` / ``<<-MARKER`` body."""
+    i = start + 2
+    n = len(content)
+    if i < n and content[i] == "-":
+        i += 1
+    quote = ""
+    if i < n and content[i] in {'"', "'"}:
+        quote = content[i]
+        i += 1
+    marker_start = i
+    while i < n and (content[i].isalnum() or content[i] == "_"):
+        i += 1
+    marker = content[marker_start:i]
+    if not marker:
+        return start + 2
+    if quote and i < n and content[i] == quote:
+        i += 1
+    line = content.find("\n", i)
+    if line < 0:
+        return n
+    line += 1
+    while line < n:
+        line_end = content.find("\n", line)
+        if line_end < 0:
+            line_end = n
+        if content[line:line_end].strip() == marker:
+            return line_end + 1 if line_end < n else n
+        line = line_end + 1
+    return n
+
+
+def _tf_block_end(content: str, start: int) -> int:
+    """Index of the closing brace for a block whose body starts at ``start``."""
+    depth = 1
+    i = start
+    n = len(content)
+    while i < n and depth:
+        ch = content[i]
+        if ch == "#":
+            nl = content.find("\n", i)
+            i = n if nl < 0 else nl + 1
+            continue
+        if ch == "/" and i + 1 < n and content[i + 1] == "/":
+            nl = content.find("\n", i)
+            i = n if nl < 0 else nl + 1
+            continue
+        if ch == "/" and i + 1 < n and content[i + 1] == "*":
+            end = content.find("*/", i + 2)
+            i = n if end < 0 else end + 2
+            continue
+        if content.startswith("<<", i):
+            i = _tf_skip_heredoc(content, i)
+            continue
+        if ch in {'"', "'"}:
+            quote = ch
+            i += 1
+            while i < n:
+                if content[i] == "\\" and quote == '"':
+                    i += 2
+                    continue
+                if content[i] == quote:
+                    i += 1
+                    break
+                i += 1
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return n
 
 
 # ---------------------------------------------------------------------------
@@ -632,6 +715,226 @@ def from_package_json_workspaces(path: str = ".") -> list[tuple[str, str]]:
 # ---------------------------------------------------------------------------
 
 
+_DIST_NAME_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?")
+
+
+def _dist_name(spec: str) -> str | None:
+    """Package name at the start of a PEP 508 requirement specifier."""
+    text = spec.strip().strip("\"'")
+    if not text or text.startswith(("-", ".", "#")):
+        return None
+    match = _DIST_NAME_RE.match(text)
+    if not match:
+        return None
+    name = match.group(0)
+    if name.lower() == "python":
+        return None
+    return name
+
+
+def _toml_has_unquoted(line: str, char: str) -> bool:
+    """True when ``char`` appears outside a quoted TOML string."""
+    quote: str | None = None
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if quote:
+            if ch == "\\" and quote == '"':
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch in {"'", '"'}:
+            quote = ch
+            i += 1
+            continue
+        if ch == char:
+            return True
+        i += 1
+    return False
+
+
+def _toml_code(line: str) -> str:
+    """Drop a TOML comment that is not inside a quoted string."""
+    out: list[str] = []
+    quote: str | None = None
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if quote:
+            out.append(ch)
+            if ch == "\\" and quote == '"':
+                if i + 1 < len(line):
+                    out.append(line[i + 1])
+                    i += 2
+                    continue
+            if ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch in {"'", '"'}:
+            quote = ch
+            out.append(ch)
+            i += 1
+            continue
+        if ch == "#":
+            break
+        out.append(ch)
+        i += 1
+    return "".join(out).strip()
+
+
+def _toml_strings(text: str) -> list[str]:
+    """String literals in a TOML snippet, basic and literal, single line."""
+    found: list[str] = []
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch not in {"'", '"'}:
+            i += 1
+            continue
+        if text.startswith(ch * 3, i):
+            end = text.find(ch * 3, i + 3)
+            if end == -1:
+                break
+            found.append(text[i + 3:end])
+            i = end + 3
+            continue
+        end = i + 1
+        buf: list[str] = []
+        while end < len(text) and text[end] != ch:
+            if text[end] == "\\" and ch == '"':
+                end += 2
+                continue
+            buf.append(text[end])
+            end += 1
+        if end >= len(text):
+            break
+        found.append("".join(buf) if ch == '"' else text[i + 1:end])
+        i = end + 1
+    return found
+
+
+def from_pyproject(path: str = "pyproject.toml") -> list[tuple[str, str]]:
+    """Extract package dependency edges from a ``pyproject.toml``.
+
+    Reads requirement lists from PEP 621 ``[project]`` / optional-dependencies,
+    PEP 735 ``[dependency-groups]``, and Poetry dependency tables. Each
+    requirement becomes ``project -> distribution``. The ``python`` bound is
+    not a package edge.
+    """
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+
+    project: str | None = None
+    deps: list[str] = []
+    section = ""
+    collecting: list[str] | None = None
+    poetry_deps = False
+
+    for raw in text.splitlines():
+        line = _toml_code(raw)
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]") and collecting is None:
+            section = line[1:-1].strip().strip('"').strip("'")
+            poetry_deps = (
+                section == "tool.poetry.dependencies"
+                or (
+                    section.startswith("tool.poetry.group.")
+                    and section.endswith(".dependencies")
+                )
+            )
+            continue
+        if collecting is not None:
+            collecting.append(line)
+            if _toml_has_unquoted(line, "]"):
+                blob = " ".join(collecting)
+                deps.extend(_dist_name(item) or "" for item in _toml_strings(blob))
+                collecting = None
+            continue
+        if section in {"project", "tool.poetry"} and "=" in line:
+            name_key, name_value = line.split("=", 1)
+            if name_key.strip().strip('"').strip("'") == "name":
+                strings = _toml_strings(name_value)
+                if strings:
+                    project = strings[0]
+                continue
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip().strip('"').strip("'")
+        value = value.strip()
+        array_keys = section in {
+            "project.optional-dependencies",
+            "dependency-groups",
+        } or (section == "project" and key == "dependencies")
+        if array_keys and value.startswith("["):
+            if "]" in value:
+                deps.extend(_dist_name(item) or "" for item in _toml_strings(value))
+            else:
+                collecting = [value]
+            continue
+        if poetry_deps and key.lower() != "python":
+            name = _dist_name(key)
+            if name:
+                deps.append(name)
+
+    if not project:
+        project = Path(path).parent.name
+    return _dedupe([(project, dep) for dep in deps if dep])
+
+
+def from_requirements(path: str = "requirements.txt") -> list[tuple[str, str]]:
+    """Extract dependency edges from a pip requirements file.
+
+    The source node is the parent directory name. Comments, options, and
+    editable self-installs (``.``) are skipped. ``-r other.txt`` is followed
+    when it stays inside the same directory.
+    """
+    root = os.path.abspath(path)
+    project = Path(root).parent.name
+    edges: list[tuple[str, str]] = []
+    seen_files: set[str] = set()
+
+    def _read(file_path: str) -> None:
+        file_path = os.path.abspath(file_path)
+        if file_path in seen_files or not os.path.isfile(file_path):
+            return
+        seen_files.add(file_path)
+        try:
+            with open(file_path, encoding="utf-8") as fh:
+                lines = fh.read().splitlines()
+        except OSError:
+            return
+        for raw in lines:
+            line = raw.split("#", 1)[0].strip()
+            if not line:
+                continue
+            if line.startswith(("-r ", "--requirement")):
+                parts = line.split()
+                _read(os.path.join(os.path.dirname(file_path), parts[-1]))
+                continue
+            if line.startswith(("-c", "--constraint", "-e", "--editable")):
+                spec = line.split(None, 1)[1].strip() if " " in line else ""
+                if spec in {".", "./"} or spec.startswith(".[") or spec.startswith("./["):
+                    continue
+                name = _dist_name(spec)
+                if name:
+                    edges.append((project, name))
+                continue
+            if line.startswith("-"):
+                continue
+            name = _dist_name(line)
+            if name:
+                edges.append((project, name))
+
+    _read(root)
+    return _dedupe(edges)
+
+
 def from_cloudformation(path: str) -> list[tuple[str, str]]:
     """Extract resource dependency edges from a CloudFormation template.
 
@@ -855,58 +1158,79 @@ def _python_resource_graph(
         if is_resource_call(node.value):
             construct_vars.add(target.id)
 
-    # Pass 2: emit edges from each construct call's kwargs
+    # Constructor kwargs, plus method calls on a construct
+    # (`rule.add_target(LambdaFunction(fn))`, `node.add_dependency(other)`).
     edges: list[tuple[str, str]] = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
-            continue
-        target = node.targets[0]
-        if not isinstance(target, ast.Name) or not isinstance(node.value, ast.Call):
-            continue
-        call = node.value
-        if not is_resource_call(call):
-            continue
-        var_name = target.id
-        for kw in call.keywords:
-            if not kw.arg:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            if (
+                isinstance(target, ast.Name)
+                and isinstance(node.value, ast.Call)
+                and is_resource_call(node.value)
+            ):
+                var_name = target.id
+                for kw in node.value.keywords:
+                    if not kw.arg:
+                        continue
+                    for ref in _construct_refs(kw.value, construct_vars):
+                        if ref != var_name:
+                            edges.append((var_name, ref))
                 continue
-            refs = _construct_refs(kw.value, construct_vars)
-            for ref in refs:
-                if ref != var_name:
-                    edges.append((var_name, ref))
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        owner = _name_root(node.func)
+        if owner not in construct_vars:
+            continue
+        mentioned = list(node.args) + [kw.value for kw in node.keywords]
+        for arg in mentioned:
+            for ref in _construct_refs(arg, construct_vars):
+                if ref != owner:
+                    edges.append((owner, ref))
 
     return _dedupe(edges)
 
 
-def _construct_refs(expr: ast.expr, construct_vars: set[str]) -> list[str]:
-    """Construct variables a kwarg value points at.
+def _name_root(expr: ast.expr) -> str | None:
+    cur: ast.expr = expr
+    while isinstance(cur, ast.Attribute):
+        cur = cur.value
+    if isinstance(cur, ast.Name):
+        return cur.id
+    return None
 
-    ``bucket`` and ``bucket.id`` / ``group.id`` both refer to the variable
-    the resource was assigned to. Lists of those are walked too.
-    """
-    if isinstance(expr, (ast.List, ast.Tuple)):
-        found: list[str] = []
-        for elt in expr.elts:
-            found.extend(_construct_refs(elt, construct_vars))
-        return found
-    if isinstance(expr, ast.Name):
-        return [expr.id] if expr.id in construct_vars else []
-    if isinstance(expr, ast.Attribute):
-        root: ast.expr = expr
-        while isinstance(root, ast.Attribute):
-            root = root.value
-        if isinstance(root, ast.Name) and root.id in construct_vars:
-            return [root.id]
-    return []
+
+def _construct_refs(expr: ast.expr, construct_vars: set[str]) -> list[str]:
+    """Construct variables mentioned in an expression, including ``group.id``."""
+    found: list[str] = []
+
+    def visit(node: ast.AST) -> None:
+        if isinstance(node, ast.Name) and node.id in construct_vars:
+            found.append(node.id)
+            return
+        for child in ast.iter_child_nodes(node):
+            visit(child)
+
+    visit(expr)
+    return found
+
+
+def _is_construct_class(func: ast.expr) -> bool:
+    """Resource classes are PascalCase. ``path.join`` and ``get_ami`` are not."""
+    if isinstance(func, ast.Name):
+        return func.id[:1].isupper()
+    if isinstance(func, ast.Attribute):
+        return func.attr[:1].isupper()
+    return False
 
 
 def _looks_like_cdk_call(call: ast.Call) -> bool:
     """Heuristic: AWS CDK constructs are called with `(scope, id, **kwargs)`.
 
-    Match `Module.Class(self, "...", ...)` or `aws_xxx.Klass(scope, "...", ...)`
-    where the second arg is a string (the construct id).
+    The callee may be ``aws_lambda.Function`` or a bare imported name such as
+    ``API``. The construct id is a string literal.
     """
-    if not isinstance(call.func, ast.Attribute):
+    if not _is_construct_class(call.func):
         return False
     if len(call.args) < 2:
         return False
@@ -914,18 +1238,24 @@ def _looks_like_cdk_call(call: ast.Call) -> bool:
     return isinstance(second, ast.Constant) and isinstance(second.value, str)
 
 
-def _looks_like_pulumi_call(call: ast.Call) -> bool:
-    """Heuristic: Pulumi resources are called with `("name", **kwargs)`.
+def _pulumi_name_arg(expr: ast.expr) -> bool:
+    """A Pulumi resource name: a literal, an f-string, or a loop variable."""
+    if isinstance(expr, ast.Constant):
+        return isinstance(expr.value, str)
+    return isinstance(expr, (ast.JoinedStr, ast.Name))
 
-    Match `Module.Class("name", ...)` or `aws.s3.Bucket("name", ...)` where
-    the FIRST positional arg is a string literal.
+
+def _looks_like_pulumi_call(call: ast.Call) -> bool:
+    """Heuristic: Pulumi resources are called with `(name, **kwargs)`.
+
+    ``aws.s3.Bucket("web")``, ``aws.s3.Bucket(f"web-{i}")``, and
+    ``s3.BucketObject(filename, bucket=bucket.id)`` all count.
     """
-    if not isinstance(call.func, ast.Attribute):
+    if not _is_construct_class(call.func) or not isinstance(call.func, ast.Attribute):
         return False
     if not call.args:
         return False
-    first = call.args[0]
-    return isinstance(first, ast.Constant) and isinstance(first.value, str)
+    return _pulumi_name_arg(call.args[0])
 
 
 # ---------------------------------------------------------------------------
@@ -940,14 +1270,15 @@ def from_otel_traces(path: str) -> list[tuple[str, str]]:
     - **OTLP JSON**: `{"resourceSpans": [{"scopeSpans": [{"spans": [...]}]}]}`
       (Default OpenTelemetry Collector / SDK export.)
     - **Jaeger**: `{"data": [{"spans": [...], "processes": {...}}]}`
-      (`jaeger-query` HTTP API and `jaeger-cli`.)
-    - **Zipkin**: `[{traceId, id, parentId, localEndpoint: {serviceName}}, ...]`
-      (Zipkin v2 JSON API.)
+      (`jaeger-query` HTTP API and `jaeger-cli`), or one trace object with
+      ``spans`` and ``processes`` and no ``data`` wrapper.
+    - **Zipkin**: a JSON array of spans, or one span object, each with
+      ``traceId`` and ``localEndpoint.serviceName`` (Zipkin v2). A span's
+      ``remoteEndpoint`` is also a service edge.
 
-    Edges are emitted at the **service** level, not the span level: a parent
-    span owned by service A and a child span owned by service B produce a
-    single edge ``A -> B``. Same-service spans (intra-process) are dropped,
-    as are self-loops.
+    Edges are service-level. A parent span in service A with a child in
+    service B produces ``A -> B``. Same-service spans and self-loops are
+    dropped.
 
     Args:
         path: Path to the trace JSON file.
@@ -969,14 +1300,28 @@ def from_otel_traces(path: str) -> list[tuple[str, str]]:
         return _dedupe(_otel_from_otlp(data))
     if isinstance(data, dict) and "data" in data and isinstance(data["data"], list):
         return _dedupe(_otel_from_jaeger(data))
-    if isinstance(data, list) and data and isinstance(data[0], dict) and "traceId" in data[0]:
-        return _dedupe(_otel_from_zipkin(data))
+    if isinstance(data, dict) and "spans" in data and "processes" in data:
+        return _dedupe(_otel_from_jaeger({"data": [data]}))
+    zipkin = _zipkin_spans(data)
+    if zipkin is not None:
+        return _dedupe(_otel_from_zipkin(zipkin))
 
     raise ValueError(
         "Trace file format not recognized. Expected OTLP "
         "(`resourceSpans`), Jaeger (`data: [{spans, processes}]`), or "
-        "Zipkin (top-level array with `traceId`/`localEndpoint`)."
+        "Zipkin (one span or an array of spans with `traceId`/`localEndpoint`)."
     )
+
+
+def _zipkin_spans(data: Any) -> list | None:
+    """Zipkin v2 is either a list of spans or one span object."""
+    if isinstance(data, list) and data and isinstance(data[0], dict) and "traceId" in data[0]:
+        return data
+    if isinstance(data, dict) and "traceId" in data and (
+        "id" in data or "localEndpoint" in data
+    ):
+        return [data]
+    return None
 
 
 def _otel_from_otlp(data: dict) -> list[tuple[str, str]]:
@@ -1055,7 +1400,7 @@ def _otel_from_jaeger(data: dict) -> list[tuple[str, str]]:
 
 
 def _otel_from_zipkin(spans: list) -> list[tuple[str, str]]:
-    """Parse Zipkin v2 JSON: flat list of {id, parentId, localEndpoint.serviceName}."""
+    """Parse Zipkin v2 spans: parent/child links and ``remoteEndpoint`` calls."""
     span_to_service: dict[str, str] = {}
     for span in spans:
         sid = span.get("id")
@@ -1066,6 +1411,14 @@ def _otel_from_zipkin(spans: list) -> list[tuple[str, str]]:
 
     edges: list[tuple[str, str]] = []
     for span in spans:
+        local = (span.get("localEndpoint") or {}).get("serviceName")
+        remote = (span.get("remoteEndpoint") or {}).get("serviceName")
+        if isinstance(local, str) and isinstance(remote, str) and local != remote:
+            kind = str(span.get("kind") or "").upper()
+            if kind in {"SERVER", "CONSUMER"}:
+                edges.append((remote, local))
+            else:
+                edges.append((local, remote))
         sid = span.get("id")
         pid = span.get("parentId")
         if not sid or not pid:
@@ -1248,6 +1601,67 @@ def _lg_top_builder(
     return pick([b for b in builders if b not in mounted])
 
 
+def _lg_type_targets(expr: ast.expr | None) -> list[str]:
+    """Targets inside ``Literal[...]`` or a union of those."""
+    if expr is None:
+        return []
+    if type(expr).__name__ == "Index":
+        return _lg_type_targets(getattr(expr, "value", None))
+    if isinstance(expr, ast.BinOp) and isinstance(expr.op, ast.BitOr):
+        return _lg_type_targets(expr.left) + _lg_type_targets(expr.right)
+    if isinstance(expr, ast.Tuple):
+        found: list[str] = []
+        for elt in expr.elts:
+            found.extend(_lg_type_targets(elt))
+        return found
+    if isinstance(expr, ast.Subscript) and _called_name(expr.value) == "Literal":
+        return _lg_targets(expr.slice)
+    return _lg_targets(expr)
+
+
+def _lg_router_targets(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
+    """Static branch targets of a conditional-edge router.
+
+    Uses ``-> Literal["a", "b"]`` (including a stringized annotation) and
+    ``return "node"`` / ``return END``. A returned variable is dynamic.
+    """
+    ann: ast.expr | None = fn.returns
+    if isinstance(ann, ast.Constant) and isinstance(ann.value, str):
+        try:
+            parsed = ast.parse(ann.value, mode="eval").body
+        except SyntaxError:
+            parsed = None
+        ann = parsed if isinstance(parsed, ast.expr) else None
+    found = list(_lg_type_targets(ann))
+    stack: list[ast.AST] = list(reversed(fn.body))
+    while stack:
+        current = stack.pop()
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            continue
+        if isinstance(current, ast.Return) and current.value is not None:
+            found.extend(_lg_targets(current.value))
+        stack.extend(reversed(list(ast.iter_child_nodes(current))))
+    return found
+
+
+def _lg_functions(tree: ast.AST) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
+    """Function name to definition. A module-level def beats a nested one."""
+    top: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+    nested: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+
+    def visit(node: ast.AST, in_function: bool) -> None:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            (nested if in_function else top)[node.name] = node
+            in_function = True
+        for child in ast.iter_child_nodes(node):
+            visit(child, in_function)
+
+    visit(tree, False)
+    chosen: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = dict(nested)
+    chosen.update(top)
+    return chosen
+
+
 def from_langgraph(path: str) -> list[tuple[str, str]]:
     """Extract edges from a LangGraph workflow definition.
 
@@ -1299,6 +1713,8 @@ def from_langgraph(path: str) -> list[tuple[str, str]]:
         ):
             compiled[target.id] = node.value.func.value.id
 
+    functions = _lg_functions(tree)
+
     # Pass 2: edges declared on a builder, plus node -> function / subgraph.
     # raw entries are (builder variable or None, source, target).
     raw: list[tuple[str | None, str, str]] = []
@@ -1335,6 +1751,13 @@ def from_langgraph(path: str) -> list[tuple[str, str]]:
             elif isinstance(mapping_node, (ast.List, ast.Tuple)):
                 for dst in _lg_targets(mapping_node):
                     raw.append((owner, src, dst))
+            elif mapping_node is None and len(node.args) >= 2 and isinstance(node.args[1], ast.Name):
+                # No path_map: the router's Literal annotation and returned
+                # string constants are the static targets.
+                router = functions.get(node.args[1].id)
+                if router is not None:
+                    for dst in _lg_router_targets(router):
+                        raw.append((owner, src, dst))
 
         elif method == "set_entry_point" and node.args:
             dst = _lg_norm(_ast_str_arg(node.args[0]))
@@ -1847,9 +2270,9 @@ def from_directory(
             to preserve the historical "parse everything recognized" behavior.
 
     Source labels: ``docker-compose``, ``kubernetes``, ``github-actions``,
-    ``terraform``, ``python-imports``, ``package-json``, ``otel-traces``,
-    ``langgraph``, ``crewai``, ``autogen``, ``aws-cdk``, ``pulumi``,
-    ``cloudformation``.
+    ``terraform``, ``python-imports``, ``package-json``, ``pyproject``,
+    ``requirements``, ``otel-traces``, ``langgraph``, ``crewai``, ``autogen``,
+    ``aws-cdk``, ``pulumi``, ``cloudformation``.
 
     Returns:
         Tuple of (edges, sources) where sources maps format name to edge count.
@@ -1948,6 +2371,30 @@ def from_directory(
                 sources["python-imports"] = len(edges)
         except Exception:
             pass
+
+    # pyproject.toml and requirements*.txt
+    if _want("pyproject"):
+        for fp in glob.glob(os.path.join(path, "**/pyproject.toml"), recursive=True):
+            if any(p in fp for p in ("node_modules", ".venv", "venv", ".git")):
+                continue
+            try:
+                edges = from_pyproject(fp)
+                if edges:
+                    all_edges.extend(edges)
+                    sources["pyproject"] = sources.get("pyproject", 0) + len(edges)
+            except Exception:
+                pass
+    if _want("requirements"):
+        for fp in glob.glob(os.path.join(path, "**/requirements*.txt"), recursive=True):
+            if any(p in fp for p in ("node_modules", ".venv", "venv", ".git")):
+                continue
+            try:
+                edges = from_requirements(fp)
+                if edges:
+                    all_edges.extend(edges)
+                    sources["requirements"] = sources.get("requirements", 0) + len(edges)
+            except Exception:
+                pass
 
     # package.json (monorepo workspaces)
     root_pkg = os.path.join(path, "package.json")

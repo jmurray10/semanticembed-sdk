@@ -34,7 +34,7 @@ Observability tools tell you **what broke**. SemanticEmbed tells you **what will
 - **Sub-millisecond server-side compute is not something this SDK can show.** `result.encoding_time_ms` is the HTTP round trip, not a kernel timer. The encode response has no separate compute-time field. From this environment on 2026-11-04 a 7-node graph returned in about 0.3–0.4 s, which is faster than the old "typically 0.5–2 s" line. A 100-node kernel time is not measurable on the free tier (the client refuses graphs over 50 nodes before the request).
 - **Works on any directed graph** — AI agent pipelines, microservices, data workflows, CI/CD
 - **Complementary structural axes** — six dimensions, each captures risk signals the others cannot
-- **14 deterministic edge parsers + 3 live connectors** — docker-compose, Kubernetes, GitHub Actions, Terraform, CloudFormation, CDK, Pulumi, Python imports, package.json, npm workspaces, OTel JSON, LangGraph, CrewAI, AutoGen; plus Dynatrace, Honeycomb, and Datadog clients
+- **16 deterministic edge parsers + 3 live connectors** — docker-compose, Kubernetes, GitHub Actions, Terraform, CloudFormation, CDK, Pulumi, Python imports, package.json, npm workspaces, pyproject.toml, requirements.txt, OTel JSON, LangGraph, CrewAI, AutoGen; plus Dynatrace, Honeycomb, and Datadog clients
 
 ---
 
@@ -99,9 +99,9 @@ WHAT TO DO
 Total: 7 risks (5 critical, 2 warning, 0 info)
 ```
 
-Directory scan is the same `encode` call after `edges, sources = se.extract.from_directory(".")`. There is no `pyproject.toml` parser. The 14 parsers are docker-compose, Kubernetes, GitHub Actions, Terraform, CloudFormation, AWS CDK (Python), Pulumi (Python), Python imports, `package.json`, npm workspaces, OpenTelemetry JSON, LangGraph, CrewAI, and AutoGen. The three live connectors are Dynatrace, Honeycomb, and Datadog; this check did not call those APIs.
+Directory scan is the same `encode` call after `edges, sources = se.extract.from_directory(".")`. The 16 parsers are docker-compose, Kubernetes, GitHub Actions, Terraform, CloudFormation, AWS CDK (Python), Pulumi (Python), Python imports, `package.json`, npm workspaces, `pyproject.toml`, `requirements.txt`, OpenTelemetry JSON, LangGraph, CrewAI, and AutoGen. The three live connectors are Dynatrace, Honeycomb, and Datadog; this check did not call those APIs.
 
-**Held-out extraction, 2026-11-04.** Hand-labeled files, scored once after the tuning files already matched. Micro precision **1.0**, recall **1.0** (25/25 edges, 4 files). Tuning was also 1.0 (58/58 edges, 13 files). Pinned SHAs are in [corpus/manifest.json](corpus/manifest.json). Re-run with `python scripts/corpus_score.py --split held-out`. Every pinned SHA was still the repo HEAD that day, so the pinned-vs-HEAD edge delta was empty. `package.json` workspaces are covered by a unit test, not by a pinned monorepo in that manifest.
+**Held-out extraction, 2026-11-04.** Hand-labeled files. Micro precision **1.0**, recall **1.0** (55/55 edges, 6 files). Tuning was also 1.0 (59/59 edges, 13 files). Pinned SHAs are in [corpus/manifest.json](corpus/manifest.json). Re-run with `python scripts/corpus_score.py --split held-out`. The only pin that was behind HEAD was this repo (`a612cec` vs `4f1cec9`); the labeled files in it produced the same edges. `package.json` workspaces are covered by a unit test, not by a pinned monorepo.
 
 Two held-out files sit in repos that also contain a tuning file (`crewAI-examples` recruitment crew, `pulumi/examples` S3 website). Those files were not used to edit the parsers.
 
@@ -213,8 +213,8 @@ edges = se.extract.from_github_actions(".github/workflows")
 edges = se.extract.from_terraform("infra/")
 # Resource names that collide (`aws_vpc.this` and `aws_internet_gateway.this`)
 # are labeled `type.name`. On terraform-aws-modules/terraform-aws-vpc
-# `b3abd6df` that is 104 edges and 86 nodes, over the free-tier cap.
-# The root `*.tf` files alone are 74 nodes. A license is required to encode them.
+# `b3abd6df` that is 119 edges and 96 nodes, over the free-tier cap.
+# The root `*.tf` files alone are 73 nodes. A license is required to encode them.
 
 # From CloudFormation (YAML or JSON)
 edges = se.extract.from_cloudformation("template.yaml")

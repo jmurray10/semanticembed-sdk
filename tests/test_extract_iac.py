@@ -93,14 +93,19 @@ class TestAwsCdk:
         edges_set = {tuple(e) for e in edges}
         assert ("my_fn", "my_role") in edges_set
         assert ("my_fn", "my_vpc") in edges_set
+        # grant_read(my_fn) is a method call on the bucket construct.
+        assert ("my_bucket", "my_fn") in edges_set
 
     def test_ignores_unrelated_kwargs(self):
         # `versioned=True`, `runtime=...`, `handler="..."` etc. don't reference
         # construct vars and shouldn't produce edges.
         edges = extract.from_aws_cdk(str(FIXTURES / "cdk_app.py"))
         edges_set = {tuple(e) for e in edges}
-        # Sanity: only the role + vpc edges should appear (no spurious targets).
-        assert all(t in {"my_role", "my_vpc"} for _s, t in edges_set)
+        assert edges_set == {
+            ("my_fn", "my_role"),
+            ("my_fn", "my_vpc"),
+            ("my_bucket", "my_fn"),
+        }
 
 
 # ---------- Pulumi ------------------------------------------------------
