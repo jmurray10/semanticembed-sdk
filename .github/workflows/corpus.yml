@@ -27,3 +27,15 @@ jobs:
 
       - name: Score tuning and held-out extraction
         run: python scripts/corpus_score.py --split all
+
+      # Report only: Jev judges every extracted edge, including edges that
+      # appear only at each repo's current HEAD. Skipped without the secret.
+      - name: Jev edge audit
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+        run: |
+          if [ -z "$TYPESAFE_API_KEY" ]; then
+            echo "::notice::TYPESAFE_API_KEY is not set; the Jev edge audit was not run."
+            exit 0
+          fi
+          python scripts/jev/edge_audit.py --log edge_audit_log.jsonl
