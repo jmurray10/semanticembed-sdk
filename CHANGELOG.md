@@ -32,8 +32,8 @@ All notable changes to the SemanticEmbed SDK.
 - **Corpus check** (`corpus/manifest.json`, `scripts/corpus_score.py`):
   held-out extraction precision 1.0 and recall 1.0 on 2026-11-04
   (55/55 edges, 6 files). Tuning was 1.0 (59/59). The only pin behind
-  HEAD was this repo, and those labeled files did not change edges. Risk labels are compared to the hosted API and do not
-  match; see `docs/scoring_gaps.md`. The 0.7.4 changelog line "vpc goes
+  HEAD was this repo, and those labeled files did not change edges.
+  Hosted scoring notes are in `docs/scoring_gaps.md`. The 0.7.4 changelog line "vpc goes
   from 2 to 56 edges" does not reproduce on vpc `b3abd6df`: the indexed-ref
   parser before name disambiguation returned 55 edges. With module blocks
   and brace-matched bodies, vpc `b3abd6df` is 119 edges / 96 nodes

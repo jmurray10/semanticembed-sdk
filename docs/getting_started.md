@@ -104,7 +104,7 @@ result.encoding_time_ms
 
 - High criticality + low independence = **Structural SPOF** (only path, high blast radius)
 - High fanout + high criticality = **Amplification risk** (failure multiplies)
-- Low independence + low fanout = **Convergence sink** (bottleneck aggregator)
+- **Convergence sink** — live `CONVERGENCE_SINK` fires at 3 or more callers. The older phrase "low independence + low fanout" does not match that rule.
 - High throughput + low independence = **Hidden bottleneck** (traffic with no backup)
 
 ---

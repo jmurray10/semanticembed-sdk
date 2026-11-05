@@ -76,7 +76,7 @@ def _parse_response(data: dict, elapsed_ms: float) -> SemanticResult:
     for r in data.get("risks", []):
         risks.append(RiskEntry(
             node=r.get("node", ""),
-            category=r.get("type", ""),
+            category=r.get("type") or r.get("category") or "",
             severity=r.get("severity", "info"),
             description=r.get("description", ""),
             value=r.get("value", 0.0),
