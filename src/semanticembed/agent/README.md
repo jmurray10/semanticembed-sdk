@@ -31,7 +31,7 @@ Two agent options — pick your LLM provider:
 ### Claude Agent (Anthropic)
 
 ```bash
-pip install semanticembed claude-agent-sdk pyyaml
+pip install 'semanticembed[agent-claude]'   # needs claude-agent-sdk>=0.1.60
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 

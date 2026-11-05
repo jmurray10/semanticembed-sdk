@@ -22,12 +22,16 @@ Usage:
     python -m semanticembed.agent --ask "What is my biggest SPOF?"
 
 Requirements:
-    pip install semanticembed claude-agent-sdk pyyaml
+    pip install 'semanticembed[agent-claude]'   # claude-agent-sdk>=0.1.60
 """
 
 import asyncio
 import json
+import os
+import re
 import sys
+import tempfile
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from claude_agent_sdk import (
@@ -272,35 +276,75 @@ def create_server():
     )
 
 
-async def run_agent(prompt: str, path: str = "."):
-    """Run the agent with a given prompt."""
-    server = create_server()
+# ---------------------------------------------------------------------------
+# Isolation: the scanned project must not configure the agent
+# ---------------------------------------------------------------------------
 
-    options = ClaudeAgentOptions(
+# claude-agent-sdk before 0.1.60 dropped setting_sources=[] and loaded every
+# settings file, including hooks from the project being scanned.
+MIN_AGENT_SDK = (0, 1, 60)
+
+
+def _check_agent_sdk() -> None:
+    """Refuse to run on a claude-agent-sdk that ignores setting_sources=[]."""
+    try:
+        installed = version("claude-agent-sdk")
+    except PackageNotFoundError:
+        return  # importable but not installed as a distribution (vendored)
+    parts = tuple(int(n) for n in re.findall(r"\d+", installed)[:3])
+    if parts < MIN_AGENT_SDK:
+        need = ".".join(map(str, MIN_AGENT_SDK))
+        raise SystemExit(
+            f"semanticembed-agent needs claude-agent-sdk>={need} (found {installed}). "
+            f"Older versions load .claude/settings.json hooks from the scanned project. "
+            f"Run: pip install -U 'claude-agent-sdk>={need}'"
+        )
+
+
+def agent_options(workdir: str) -> ClaudeAgentOptions:
+    """Options that keep the scanned project out of the agent's configuration.
+
+    Left to its defaults, the Claude Code CLI loads ``.claude/settings.json``
+    (including hooks that run shell commands), ``CLAUDE.md`` and skills from
+    its working directory, which is usually the repository being scanned.
+
+    - ``setting_sources=[]``: load no user, project or local settings.
+    - ``cwd=workdir``: an empty directory, so no project files are found.
+    - ``tools=[]``: no built-in tools (Bash, Read, Write, WebFetch, ...).
+      The agent can only call the SemanticEmbed tools below.
+    """
+    return ClaudeAgentOptions(
         model="sonnet",
         system_prompt=AGENT_SYSTEM,
-        mcp_servers={"semanticembed": server},
+        mcp_servers={"semanticembed": create_server()},
+        tools=[],
         allowed_tools=["mcp__semanticembed__*"],
+        setting_sources=[],
+        cwd=workdir,
     )
 
-    full_prompt = f"Working directory: {path}\n\n{prompt}"
 
-    async for message in query(prompt=full_prompt, options=options):
-        if isinstance(message, ResultMessage) and message.subtype == "success":
-            print(message.result.encode("utf-8", errors="replace").decode("utf-8"))
+async def run_agent(prompt: str, path: str = "."):
+    """Run the agent with a given prompt."""
+    _check_agent_sdk()
+    path = os.path.abspath(path)
+    with tempfile.TemporaryDirectory(prefix="semanticembed-agent-") as workdir:
+        options = agent_options(workdir)
+        full_prompt = f"Working directory: {path}\n\n{prompt}"
+        async for message in query(prompt=full_prompt, options=options):
+            if isinstance(message, ResultMessage) and message.subtype == "success":
+                print(message.result.encode("utf-8", errors="replace").decode("utf-8"))
 
 
 async def interactive(path: str = "."):
     """Run the agent in interactive mode."""
-    server = create_server()
+    _check_agent_sdk()
+    path = os.path.abspath(path)
+    with tempfile.TemporaryDirectory(prefix="semanticembed-agent-") as workdir:
+        await _interactive(path, agent_options(workdir))
 
-    options = ClaudeAgentOptions(
-        model="sonnet",
-        system_prompt=AGENT_SYSTEM,
-        mcp_servers={"semanticembed": server},
-        allowed_tools=["mcp__semanticembed__*"],
-    )
 
+async def _interactive(path: str, options: ClaudeAgentOptions):
     print("SemanticEmbed Agent")
     print("=" * 40)
     print(f"Scanning: {path}")
