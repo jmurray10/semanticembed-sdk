@@ -141,7 +141,8 @@ _SKIP_DIRS = frozenset({
 # machine. Edges need names and hosts, never secret values.
 _REDACTED = "[REDACTED]"
 _TOKEN_RES = [
-    re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----", re.S),
+    re.compile(r"-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY-----[A-Za-z0-9+/=\s:,-]{0,8192}?"
+               r"-----END [A-Z0-9 ]{0,40}PRIVATE KEY-----"),
     re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),                  # AWS access key id
     re.compile(r"\bgh[pousr]_[A-Za-z0-9]{30,}\b"),                 # GitHub tokens
     re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
@@ -154,22 +155,33 @@ _TOKEN_RES = [
 ]
 # user:password@ inside a URL. The host is kept: it is often the edge target.
 _URL_CRED_RE = re.compile(r"(\b[A-Za-z][A-Za-z0-9+.-]*://)[^\s:/@'\"]+:[^\s@/'\"]+@")
+# Patterns are line-bounded ([ \t], not \s) and length-capped so a hostile
+# file cannot make them backtrack for minutes.
 _SENSITIVE = (
-    r"[\w.-]*(?:password|passwd|secret|token|api[_-]?key|apikey|access[_-]?key"
-    r"|private[_-]?key|credential|client[_-]?secret)[\w.-]*"
+    r"[\w.-]{0,64}(?:password|passwd|secret|token|api[_-]?key|apikey|access[_-]?key"
+    r"|private[_-]?key|credential|client[_-]?secret)[\w.-]{0,64}"
 )
 # KEY: value / KEY=value / "key": "value" / key = "value"
 _ASSIGN_RE = re.compile(
-    r"(?im)^(\s*-?\s*[\"']?" + _SENSITIVE + r"[\"']?[ \t]*[:=][ \t]*)(?![ \t,]*$)([^\n]+?)([ \t]*,?[ \t]*)$"
+    r"(?im)^([ \t]*-?[ \t]*[\"']?(" + _SENSITIVE + r")[\"']?[ \t]*[:=][ \t]*)"
+    r"(?![ \t,]*$)([^\n]{1,4096}?)([ \t]*,?[ \t]*)$"
 )
 # "key": "value" anywhere on a line (minified JSON, YAML flow maps)
 _INLINE_PAIR_RE = re.compile(
-    r"(?i)([\"']" + _SENSITIVE + r"[\"'][ \t]*:[ \t]*)([\"'])((?:(?!\2).)+)\2"
+    r"(?i)([\"'](" + _SENSITIVE + r")[\"'][ \t]*:[ \t]*)([\"'])((?:(?!\3).){1,4096})\3"
 )
 # Kubernetes env entries: "- name: DB_PASSWORD" then "value: ..."
 _ENV_PAIR_RE = re.compile(
-    r"(?im)^(\s*-?\s*name:[ \t]*[\"']?" + _SENSITIVE + r"[\"']?[ \t]*\n\s*value:[ \t]*)([^\n]+)$"
+    r"(?im)^([ \t]*-?[ \t]*name:[ \t]*[\"']?(" + _SENSITIVE + r")[\"']?[ \t]*\n[ \t]*value:[ \t]*)"
+    r"([^\n]{1,4096})$"
 )
+# A value is kept when the key names an address, or the value is a URL:
+# AUTH_TOKEN_URL=http://auth-svc:8080 is an edge, not a secret.
+_ADDRESS_KEY_RE = re.compile(r"(?i)(?:host|hostname|url|uri|addr|address|endpoint|server|service|svc|port)$")
+
+
+def _is_address(key: str, value: str) -> bool:
+    return "://" in value or bool(_ADDRESS_KEY_RE.search(key.strip("\"'").rstrip("_-.")))
 _SECRET_DOC_RE = re.compile(r"(?m)^kind:[ \t]*[\"']?Secret[\"']?[ \t]*$")
 _SECRET_REF_PREFIXES = ("${", "{{", "$(", "var.", "local.", "data.", "module.")
 
@@ -211,22 +223,33 @@ def _redact(text: str) -> tuple[str, int]:
     for pattern in _TOKEN_RES:
         text = _apply(pattern, _REDACTED, text)
     text = _apply(_URL_CRED_RE, r"\1" + _REDACTED + "@", text)
-    text = _apply(_ENV_PAIR_RE, lambda m: m.group(1) + _REDACTED, text)
+    def _keep(key: str, value: str) -> bool:
+        value = value.strip().strip("\"'")
+        return (not value or _REDACTED in value or value.startswith(_SECRET_REF_PREFIXES)
+                or _is_address(key, value))
+
+    def _env(m: re.Match) -> str:
+        nonlocal count
+        if _keep(m.group(2), m.group(3)):
+            return m.group(0)
+        count += 1
+        return m.group(1) + _REDACTED
 
     def _assign(m: re.Match) -> str:
         nonlocal count
-        value = m.group(2).strip().strip("\"'")
-        if not value or _REDACTED in value or value.startswith(_SECRET_REF_PREFIXES):
-            return m.group(0)  # empty, already redacted, or a reference to a secret
+        if _keep(m.group(2), m.group(3)):
+            return m.group(0)  # empty, a reference to a secret, or an address
         count += 1
-        return m.group(1) + _REDACTED + m.group(3)
+        return m.group(1) + _REDACTED + m.group(4)
 
     def _inline(m: re.Match) -> str:
         nonlocal count
-        if _REDACTED in m.group(3) or m.group(3).startswith(_SECRET_REF_PREFIXES):
+        if _keep(m.group(2), m.group(4)):
             return m.group(0)
         count += 1
-        return m.group(1) + m.group(2) + _REDACTED + m.group(2)
+        return m.group(1) + m.group(3) + _REDACTED + m.group(3)
+
+    text = _ENV_PAIR_RE.sub(_env, text)
 
     text = _INLINE_PAIR_RE.sub(_inline, text)
     text = _ASSIGN_RE.sub(_assign, text)
@@ -264,11 +287,11 @@ def _gather_files(path: str, log: list[str]) -> list[tuple[str, str]]:
                 content = fp.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
-            content, n = _redact(content)
-            redacted += n
             if len(content) > _MAX_FILE_BYTES:
                 content = content[:_MAX_FILE_BYTES]
                 log.append(f"truncated {fp.relative_to(root)} to {_MAX_FILE_BYTES} bytes")
+            content, n = _redact(content)
+            redacted += n
             if total + len(content) > _MAX_TOTAL_BYTES:
                 log.append(
                     f"hit total byte cap ({_MAX_TOTAL_BYTES}); skipping remaining files"
