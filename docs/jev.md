@@ -33,9 +33,10 @@ hosted server does, or add code that does the server's work here?".
 - Any of the four above 0.7: **leak**. The check fails, with an error on the line.
 - Otherwise, any of the four at 0.3 or more: **review**. A warning on the line.
 - Otherwise: pass.
-- In the guard's own code (`scripts/jev/*.py`, `tests/test_jev_scripts.py`),
-  a leak also needs the subject answer at 0.3 or more, because that code
-  states the guard's own cutoffs.
+- In the guard's own files (`scripts/jev/*.py`, `tests/test_jev_scripts.py`,
+  this page), a leak also needs the subject answer at 0.3 or more, because
+  they state the guard's own cutoffs. The list is exact paths in
+  `leak_guard.py`.
 - If Jev cannot be reached, or the key is missing, the check fails (exit 2).
 
 The workflow runs the guard's code from the base branch, so a pull request
@@ -59,7 +60,7 @@ cutoff, the tie-break rule, or how cycles are cut.
 |---|---|---|---|---|---|
 | Audit tuning commits (`a612cec`, `4f1cec9`) | 94 | 1 | 1 | 0 | 5 |
 | Audit held-out commits (`33f9a51`, `26517a0`) | 87 | 15 | 15 | 0 | 1 |
-| The security and Jev branches (all clean) | 91 | 0 | 0 | 0 | 10 |
+| The security and Jev branches (all clean) | 94 | 0 | 0 | 0 | 13 |
 | Invented cases (`canary_cases.json`) | 24 | 12 | 12 | 1 | 1 |
 
 Cost: about $0.0001 per hunk.
