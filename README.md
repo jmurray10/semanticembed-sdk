@@ -105,7 +105,7 @@ Directory scan is the same `encode` call after `edges, sources = se.extract.from
 
 Two held-out files sit in repos that also contain a tuning file (`crewAI-examples` recruitment crew, `pulumi/examples` S3 website). Those files were not used to edit the parsers.
 
-Hosted scoring behavior for the voting-app shape, identical twins, and cyclic LangGraph graphs is described in [docs/scoring_gaps.md](docs/scoring_gaps.md). The client forwards the edge list; those three outcomes are server rules, not client bugs.
+What to expect from hosted scoring on the voting-app shape, identical twins, and cyclic LangGraph graphs is in [docs/scoring_gaps.md](docs/scoring_gaps.md). The client forwards the edge list unchanged; those outcomes come from the service, not from client bugs.
 
 **Or try it without installing** — [open the Quickstart in Google Colab](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/01_quickstart.ipynb).
 

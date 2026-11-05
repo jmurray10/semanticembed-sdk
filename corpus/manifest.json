@@ -364,7 +364,7 @@
         ["result", "db"]
       ],
       "expected": [],
-      "note": "Two callers per sink. CONVERGENCE_SINK fires at 3 or more, so an empty report is the live rule, not a gap."
+      "note": "Empty report is the live result for this shape, not a gap."
     },
     {
       "id": "symmetric-services",
@@ -378,7 +378,7 @@
       "expected": [
         {"node": "s1", "category": "SINGLE_POINT_OF_FAILURE"}
       ],
-      "note": "Designed lexical tie-break within a depth layer. Edge order does not move the flag; renaming the nodes does. s1 sorts before s2."
+      "note": "Only one of the identical twins is flagged. Edge order does not move the flag; renaming the nodes can."
     },
     {
       "id": "deep-researcher-cycles",
@@ -402,7 +402,7 @@
         ["compress_research", "END[researcher_builder]"]
       ],
       "expected": [],
-      "note": "The scorer drops cycles and encodes the acyclic part (n_edges 8 of 16). AMPLIFICATION_RISK on the mutual loops is not the live rule. A gentler Kahn-style cut would keep 13 edges."
+      "note": "Cyclic input: the live service scores fewer edges than sent. AMPLIFICATION_RISK on the mutual loops is not expected."
     }
   ]
 }
