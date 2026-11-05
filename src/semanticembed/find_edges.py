@@ -7,8 +7,11 @@ falls through to an LLM if no recognized files were found.
 This module is the public hook for what the `agent/` CLI does interactively.
 
 Data egress (read README before using `provider="claude"` / `"gemini"` on
-private repos): the LLM fallback sends raw file contents to Anthropic or
-Google. The deterministic path (`from_directory`) does not.
+private repos): the LLM fallback sends file contents to Anthropic or Google.
+Vendored directories (node_modules, .venv, vendor, ...) and files that
+resolve outside `path` are skipped, and secret-looking values are replaced
+with [REDACTED] first. Redaction is pattern-based and can miss a secret.
+The deterministic path (`from_directory`) sends nothing to an LLM.
 """
 
 from __future__ import annotations
@@ -127,21 +130,142 @@ _SUPPORTED_GLOBS = (
 )
 
 
+# Third-party or generated trees: not the user's architecture, and large.
+_SKIP_DIRS = frozenset({
+    "node_modules", "bower_components", ".venv", "venv", "site-packages",
+    "__pycache__", ".git", ".hg", ".svn", ".terraform", ".tox", ".nox",
+    "vendor", ".next",
+})
+
+# Values that look like credentials are replaced before file text leaves the
+# machine. Edges need names and hosts, never secret values.
+_REDACTED = "[REDACTED]"
+_TOKEN_RES = [
+    re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----", re.S),
+    re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),                  # AWS access key id
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{30,}\b"),                 # GitHub tokens
+    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
+    re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}"),                 # Slack
+    re.compile(r"\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}"),         # Anthropic / OpenAI
+    re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"),                      # Google API key
+    re.compile(r"\b[rs]k_(?:live|test)_[0-9A-Za-z]{16,}\b"),       # Stripe
+    re.compile(r"\bsem_[A-Za-z0-9_-]{16,}\b"),                     # SemanticEmbed
+    re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"),  # JWT
+]
+# user:password@ inside a URL. The host is kept: it is often the edge target.
+_URL_CRED_RE = re.compile(r"(\b[A-Za-z][A-Za-z0-9+.-]*://)[^\s:/@'\"]+:[^\s@/'\"]+@")
+_SENSITIVE = (
+    r"[\w.-]*(?:password|passwd|secret|token|api[_-]?key|apikey|access[_-]?key"
+    r"|private[_-]?key|credential|client[_-]?secret)[\w.-]*"
+)
+# KEY: value / KEY=value / "key": "value" / key = "value"
+_ASSIGN_RE = re.compile(
+    r"(?im)^(\s*-?\s*[\"']?" + _SENSITIVE + r"[\"']?[ \t]*[:=][ \t]*)(?![ \t,]*$)([^\n]+?)([ \t]*,?[ \t]*)$"
+)
+# "key": "value" anywhere on a line (minified JSON, YAML flow maps)
+_INLINE_PAIR_RE = re.compile(
+    r"(?i)([\"']" + _SENSITIVE + r"[\"'][ \t]*:[ \t]*)([\"'])((?:(?!\2).)+)\2"
+)
+# Kubernetes env entries: "- name: DB_PASSWORD" then "value: ..."
+_ENV_PAIR_RE = re.compile(
+    r"(?im)^(\s*-?\s*name:[ \t]*[\"']?" + _SENSITIVE + r"[\"']?[ \t]*\n\s*value:[ \t]*)([^\n]+)$"
+)
+_SECRET_DOC_RE = re.compile(r"(?m)^kind:[ \t]*[\"']?Secret[\"']?[ \t]*$")
+_SECRET_REF_PREFIXES = ("${", "{{", "$(", "var.", "local.", "data.", "module.")
+
+
+def _redact(text: str) -> tuple[str, int]:
+    """Replace secret-looking values in config text. Returns (text, count).
+
+    Pattern-based: it can miss a secret. It never removes a host name, so
+    service URLs still yield edges.
+    """
+    count = 0
+
+    # Kubernetes Secret documents: drop every value under data / stringData.
+    docs = re.split(r"(?m)^(---.*)$", text)
+    for i, doc in enumerate(docs):
+        if not _SECRET_DOC_RE.search(doc):
+            continue
+        lines, in_data = doc.split("\n"), False
+        for j, line in enumerate(lines):
+            if re.match(r"^(?:data|stringData):\s*$", line):
+                in_data = True
+                continue
+            if in_data and line[:1] in (" ", "\t"):
+                m = re.match(r"^(\s+[^:#]+:[ \t]*)(\S.*)$", line)
+                if m:
+                    lines[j] = m.group(1) + _REDACTED
+                    count += 1
+            elif line.strip():
+                in_data = False
+        docs[i] = "\n".join(lines)
+    text = "".join(docs)
+
+    def _apply(pattern: re.Pattern, repl, s: str) -> str:
+        nonlocal count
+        s, n = pattern.subn(repl, s)
+        count += n
+        return s
+
+    for pattern in _TOKEN_RES:
+        text = _apply(pattern, _REDACTED, text)
+    text = _apply(_URL_CRED_RE, r"\1" + _REDACTED + "@", text)
+    text = _apply(_ENV_PAIR_RE, lambda m: m.group(1) + _REDACTED, text)
+
+    def _assign(m: re.Match) -> str:
+        nonlocal count
+        value = m.group(2).strip().strip("\"'")
+        if not value or _REDACTED in value or value.startswith(_SECRET_REF_PREFIXES):
+            return m.group(0)  # empty, already redacted, or a reference to a secret
+        count += 1
+        return m.group(1) + _REDACTED + m.group(3)
+
+    def _inline(m: re.Match) -> str:
+        nonlocal count
+        if _REDACTED in m.group(3) or m.group(3).startswith(_SECRET_REF_PREFIXES):
+            return m.group(0)
+        count += 1
+        return m.group(1) + m.group(2) + _REDACTED + m.group(2)
+
+    text = _INLINE_PAIR_RE.sub(_inline, text)
+    text = _ASSIGN_RE.sub(_assign, text)
+    return text, count
+
+
 def _gather_files(path: str, log: list[str]) -> list[tuple[str, str]]:
-    """Collect (relative_path, content) pairs for LLM context, with budget caps."""
+    """Collect (relative_path, content) pairs for LLM context, with budget caps.
+
+    Skips vendored and generated directories, skips files whose real path is
+    outside ``path`` (symlinks), and redacts secret-looking values.
+    """
     root = Path(path)
+    real_root = os.path.realpath(root)
     seen: set[Path] = set()
     out: list[tuple[str, str]] = []
     total = 0
+    redacted = 0
     for pattern in _SUPPORTED_GLOBS:
         for fp in root.glob(pattern):
             if fp in seen or not fp.is_file():
                 continue
             seen.add(fp)
+            rel_parts = fp.relative_to(root).parts
+            if any(part in _SKIP_DIRS for part in rel_parts[:-1]):
+                continue
+            try:
+                inside = os.path.commonpath([real_root, os.path.realpath(fp)]) == real_root
+            except ValueError:  # different drives on Windows
+                inside = False
+            if not inside:
+                log.append(f"skipped {fp.relative_to(root)}: resolves outside {path}")
+                continue
             try:
                 content = fp.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
+            content, n = _redact(content)
+            redacted += n
             if len(content) > _MAX_FILE_BYTES:
                 content = content[:_MAX_FILE_BYTES]
                 log.append(f"truncated {fp.relative_to(root)} to {_MAX_FILE_BYTES} bytes")
@@ -149,6 +273,8 @@ def _gather_files(path: str, log: list[str]) -> list[tuple[str, str]]:
                 log.append(
                     f"hit total byte cap ({_MAX_TOTAL_BYTES}); skipping remaining files"
                 )
+                if redacted:
+                    log.append(f"redacted {redacted} secret-looking values before sending")
                 return out
             total += len(content)
             try:
@@ -156,6 +282,8 @@ def _gather_files(path: str, log: list[str]) -> list[tuple[str, str]]:
             except ValueError:
                 rel = str(fp)
             out.append((rel, content))
+    if redacted:
+        log.append(f"redacted {redacted} secret-looking values before sending")
     log.append(f"gathered {len(out)} files, {total} bytes for LLM context")
     return out
 
