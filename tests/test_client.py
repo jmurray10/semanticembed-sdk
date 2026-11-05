@@ -58,6 +58,48 @@ SAMPLE_EDGES = [["a", "b"], ["b", "c"]]
 
 class TestHappyPath:
     @respx.mock
+    def test_risk_category_falls_back_when_type_is_absent(self):
+        body = {
+            **VALID_BODY,
+            "risks": [
+                {
+                    "node": "b",
+                    "category": "CONVERGENCE_SINK",
+                    "severity": "info",
+                    "description": "three callers",
+                    "value": 0.5,
+                }
+            ],
+        }
+        respx.post(f"{DEFAULT_API_URL}/api/v1/encode").mock(
+            return_value=httpx.Response(200, json=body)
+        )
+        result = se.encode(SAMPLE_EDGES)
+        assert result.risks[0].category == "CONVERGENCE_SINK"
+        assert result.risks[0].node == "b"
+
+    @respx.mock
+    def test_risk_type_wins_over_category(self):
+        body = {
+            **VALID_BODY,
+            "risks": [
+                {
+                    "node": "b",
+                    "type": "SINGLE_POINT_OF_FAILURE",
+                    "category": "CONVERGENCE_SINK",
+                    "severity": "critical",
+                    "description": "tie",
+                    "value": 0.1,
+                }
+            ],
+        }
+        respx.post(f"{DEFAULT_API_URL}/api/v1/encode").mock(
+            return_value=httpx.Response(200, json=body)
+        )
+        result = se.encode(SAMPLE_EDGES)
+        assert result.risks[0].category == "SINGLE_POINT_OF_FAILURE"
+
+    @respx.mock
     def test_encode_returns_result(self):
         respx.post(f"{DEFAULT_API_URL}/api/v1/encode").mock(
             return_value=httpx.Response(200, json=VALID_BODY)

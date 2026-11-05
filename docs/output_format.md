@@ -49,7 +49,7 @@ print(risk)
 ### Risk Categories
 
 - **Amplification risk** -- high fanout + high criticality
-- **Convergence sink** -- low independence + low fanout
+- **Convergence sink** -- live `CONVERGENCE_SINK` fires at 3 or more callers. "Low independence + low fanout" does not match that rule.
 - **Structural SPOF** -- low independence + high criticality
 - **Hidden bottleneck** -- high throughput + low independence
 

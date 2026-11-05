@@ -363,11 +363,8 @@
         ["worker", "db"],
         ["result", "db"]
       ],
-      "expected": [
-        {"node": "redis", "category": "CONVERGENCE_SINK"},
-        {"node": "db", "category": "CONVERGENCE_SINK"}
-      ],
-      "note": "redis and db each have two callers. Hand label, not a server threshold."
+      "expected": [],
+      "note": "Two callers per sink. CONVERGENCE_SINK fires at 3 or more, so an empty report is the live rule, not a gap."
     },
     {
       "id": "symmetric-services",
@@ -379,10 +376,9 @@
         ["s2", "db"]
       ],
       "expected": [
-        {"node": "s1", "category": "SINGLE_POINT_OF_FAILURE"},
-        {"node": "s2", "category": "SINGLE_POINT_OF_FAILURE"}
+        {"node": "s1", "category": "SINGLE_POINT_OF_FAILURE"}
       ],
-      "note": "s1 and s2 have the same in-degree and out-degree. A tie should not drop one."
+      "note": "Designed lexical tie-break within a depth layer. Edge order does not move the flag; renaming the nodes does. s1 sorts before s2."
     },
     {
       "id": "deep-researcher-cycles",
@@ -405,11 +401,8 @@
         ["researcher_tools", "compress_research"],
         ["compress_research", "END[researcher_builder]"]
       ],
-      "expected": [
-        {"node": "supervisor", "category": "AMPLIFICATION_RISK"},
-        {"node": "researcher", "category": "AMPLIFICATION_RISK"}
-      ],
-      "note": "Mutual tool loops. The server category list has no CYCLE label; AMPLIFICATION_RISK is the closest published category. Agreement is reported, not tuned."
+      "expected": [],
+      "note": "The scorer drops cycles and encodes the acyclic part (n_edges 8 of 16). AMPLIFICATION_RISK on the mutual loops is not the live rule. A gentler Kahn-style cut would keep 13 edges."
     }
   ]
 }

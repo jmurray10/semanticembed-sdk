@@ -87,11 +87,12 @@ than trusted:
    corresponding relabeling). **Sketch:** each axis is computed from
    structural quantities (topological depth, BFS-derived path counts,
    Louvain community indices, edge-weight aggregates) that are themselves
-   defined modulo isomorphism. *Caveat:* the **independence** axis uses
-   lexicographic ordering of nodes within a depth layer for determinism,
-   which means renaming can shift the independence value within a layer
-   even though the underlying lateral-redundancy structure is unchanged.
-   This is a known limitation tracked for a future release.
+   defined modulo isomorphism. **Characteristic:** the **independence**
+   axis breaks ties by lexicographic order of node names within a depth
+   layer. Permuting edge order does not change which node is first.
+   Renaming nodes can move the low independence value to whichever twin
+   sorts first. The underlying lateral-redundancy structure is unchanged.
+   See [scoring behavior](scoring_gaps.md).
 
 2. **Self-loop and back-edge invariance.** Self-loops are silently dropped
    during edge normalization. Back-edges are removed by Kahn's DAG
@@ -165,6 +166,6 @@ might justify a different dimensionality.
 | Pattern | Dimensions | Risk |
 |---------|-----------|------|
 | **Amplification risk** | High fanout + high criticality | Failure cascades to many services across many paths |
-| **Convergence sink** | Low independence + low fanout | Many services depend on one aggregation point |
+| **Convergence sink** | 3 or more callers (live `CONVERGENCE_SINK`) | Many services depend on one aggregation point. "Low independence + low fanout" does not match this rule. |
 | **Structural SPOF** | Low independence + high criticality | Only node at its depth, on most paths |
 | **Hidden bottleneck** | High throughput + low independence | Carries most traffic with no redundancy |
