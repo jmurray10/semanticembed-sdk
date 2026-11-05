@@ -1,0 +1,173 @@
+{
+ "model": "jev-1.14.0",
+ "noul": {
+  "neg-changelog": {
+   "about_scoring": 0.04,
+   "preprocess": 0.04,
+   "procedure": 0.07,
+   "threshold": 0.02,
+   "tiebreak": 0.04
+  },
+  "neg-ci": {
+   "about_scoring": 0.02,
+   "preprocess": 0.02,
+   "procedure": 0.03,
+   "threshold": 0.02,
+   "tiebreak": 0.02
+  },
+  "neg-client-cycle": {
+   "about_scoring": 0.12,
+   "preprocess": 0.12,
+   "procedure": 0.08,
+   "threshold": 0.03,
+   "tiebreak": 0.03
+  },
+  "neg-dedupe": {
+   "about_scoring": 0.03,
+   "preprocess": 0.07,
+   "procedure": 0.04,
+   "threshold": 0.02,
+   "tiebreak": 0.08
+  },
+  "neg-example-output": {
+   "about_scoring": 0.03,
+   "preprocess": 0.03,
+   "procedure": 0.05,
+   "threshold": 0.03,
+   "tiebreak": 0.03
+  },
+  "neg-flag-meaning": {
+   "about_scoring": 0.15,
+   "preprocess": 0.03,
+   "procedure": 0.07,
+   "threshold": 0.03,
+   "tiebreak": 0.04
+  },
+  "neg-meaning": {
+   "about_scoring": 0.21,
+   "preprocess": 0.03,
+   "procedure": 0.14,
+   "threshold": 0.03,
+   "tiebreak": 0.03
+  },
+  "neg-parser": {
+   "about_scoring": 0.03,
+   "preprocess": 0.12,
+   "procedure": 0.09,
+   "threshold": 0.03,
+   "tiebreak": 0.03
+  },
+  "neg-sort-output": {
+   "about_scoring": 0.03,
+   "preprocess": 0.02,
+   "procedure": 0.05,
+   "threshold": 0.03,
+   "tiebreak": 0.86
+  },
+  "neg-test": {
+   "about_scoring": 0.02,
+   "preprocess": 0.02,
+   "procedure": 0.05,
+   "threshold": 0.02,
+   "tiebreak": 0.02
+  },
+  "neg-tier": {
+   "about_scoring": 0.06,
+   "preprocess": 0.03,
+   "procedure": 0.04,
+   "threshold": 0.05,
+   "tiebreak": 0.02
+  },
+  "neg-user-threshold": {
+   "about_scoring": 0.05,
+   "preprocess": 0.02,
+   "procedure": 0.05,
+   "threshold": 0.53,
+   "tiebreak": 0.03
+  },
+  "port-1": {
+   "about_scoring": 0.91,
+   "preprocess": 0.02,
+   "procedure": 0.06,
+   "threshold": 0.97,
+   "tiebreak": 0.03
+  },
+  "port-2": {
+   "about_scoring": 0.96,
+   "preprocess": 0.03,
+   "procedure": 0.72,
+   "threshold": 0.08,
+   "tiebreak": 0.03
+  },
+  "pre-1": {
+   "about_scoring": 0.96,
+   "preprocess": 0.95,
+   "procedure": 0.51,
+   "threshold": 0.03,
+   "tiebreak": 0.08
+  },
+  "pre-2": {
+   "about_scoring": 0.9,
+   "preprocess": 0.91,
+   "procedure": 0.71,
+   "threshold": 0.04,
+   "tiebreak": 0.04
+  },
+  "proc-1": {
+   "about_scoring": 0.98,
+   "preprocess": 0.04,
+   "procedure": 0.92,
+   "threshold": 0.05,
+   "tiebreak": 0.04
+  },
+  "proc-2": {
+   "about_scoring": 0.95,
+   "preprocess": 0.04,
+   "procedure": 0.85,
+   "threshold": 0.03,
+   "tiebreak": 0.04
+  },
+  "thr-1": {
+   "about_scoring": 0.95,
+   "preprocess": 0.03,
+   "procedure": 0.07,
+   "threshold": 0.98,
+   "tiebreak": 0.03
+  },
+  "thr-2": {
+   "about_scoring": 0.86,
+   "preprocess": 0.03,
+   "procedure": 0.13,
+   "threshold": 0.98,
+   "tiebreak": 0.03
+  },
+  "thr-3": {
+   "about_scoring": 0.84,
+   "preprocess": 0.06,
+   "procedure": 0.11,
+   "threshold": 0.97,
+   "tiebreak": 0.03
+  },
+  "thr-4": {
+   "about_scoring": 0.8,
+   "preprocess": 0.09,
+   "procedure": 0.14,
+   "threshold": 0.97,
+   "tiebreak": 0.03
+  },
+  "tie-1": {
+   "about_scoring": 0.59,
+   "preprocess": 0.02,
+   "procedure": 0.06,
+   "threshold": 0.03,
+   "tiebreak": 0.94
+  },
+  "tie-2": {
+   "about_scoring": 0.53,
+   "preprocess": 0.04,
+   "procedure": 0.24,
+   "threshold": 0.03,
+   "tiebreak": 0.83
+  }
+ }
+}
