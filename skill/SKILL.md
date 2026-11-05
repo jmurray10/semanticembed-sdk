@@ -15,7 +15,6 @@ metadata:
   author: SemanticEmbed
   version: "0.2.3"
   patent: "Pending -- Application #63/994,075"
-allowed-tools: Bash(python3:*) Bash(pip:*)
 ---
 
 # SemanticEmbed 6D Structural Analysis
