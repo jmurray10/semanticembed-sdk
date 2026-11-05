@@ -1,7 +1,7 @@
 ---
 name: analyze
 description: Scan a repo for infrastructure files (docker-compose, k8s, terraform, GitHub Actions), extract edges, and run 6D structural risk analysis via SemanticEmbed.
-allowed-tools: Bash Read Glob
+allowed-tools: Read Glob
 ---
 
 # /analyze — Structural Risk Analysis
