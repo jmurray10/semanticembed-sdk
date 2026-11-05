@@ -4,6 +4,30 @@ All notable changes to the SemanticEmbed SDK.
 
 ## Unreleased
 
+### Security
+
+- **Agent no longer runs the scanned project's hooks.** `semanticembed-agent`
+  started the Claude Code CLI in your working directory with default
+  settings, so a cloned repo's `.claude/settings.json` hooks ran shell
+  commands with no prompt. The agent now loads no settings files, runs the
+  CLI in an empty temporary directory, and has no built-in tools (shell,
+  file read/write, web fetch). Requires `claude-agent-sdk>=0.1.60`; older
+  versions ignore `setting_sources=[]` and are refused at startup.
+- **`extract.from_requirements`** follows `-r` only to files inside the
+  starting file's directory, after resolving symlinks. Lines of a file
+  outside it used to become node names sent to the API.
+- **`find_edges()` LLM fallback** skips `node_modules`, `.venv`, `vendor`
+  and similar directories, skips files that resolve outside the scanned
+  path, and replaces secret-looking values with `[REDACTED]` before
+  sending file text to Anthropic or Google. README "What gets sent where"
+  now covers `find_edges()` and `explain()` / `ask()`.
+- **Skills** no longer pre-approve shell commands.
+- **Releases** publish only from a tag on `main` that matches the package
+  version, after the test suite passes, with approval on the `pypi`
+  environment. Workflow actions are pinned to commit SHAs; Dependabot is on.
+
+### Changed
+
 - **`extract.from_crewai`** reads `@CrewBase` / `@agent` / `@task` / `@crew`
   crews: agent-to-task edges, the sequential task chain, YAML and inline
   `context` dependencies, and `manager_agent` fan-out. crewAI-examples
