@@ -49,6 +49,8 @@ packages = ["src/semanticembed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Import the checkout under test, not an installed copy from PyPI.
+pythonpath = ["src"]
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]

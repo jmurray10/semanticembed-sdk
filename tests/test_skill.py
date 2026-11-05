@@ -14,6 +14,7 @@ loading, and output formatting.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import textwrap
@@ -59,10 +60,10 @@ def _run(args: list[str], *, env_extra: dict | None = None, stdin: str | None = 
         se.encode = _fake_encode
     """)
     cmd = [sys.executable, "-c", bootstrap + f"\nimport runpy; sys.argv = ['analyze'] + {args!r}; runpy.run_path({str(SKILL_SCRIPT)!r}, run_name='__main__')"]
-    env = None
-    if env_extra is not None:
-        import os
-        env = {**os.environ, **env_extra}
+    # The child must import this checkout, not an installed release.
+    src = str(Path(__file__).resolve().parent.parent / "src")
+    pythonpath = os.pathsep.join(p for p in (src, os.environ.get("PYTHONPATH")) if p)
+    env = {**os.environ, "PYTHONPATH": pythonpath, **(env_extra or {})}
     return subprocess.run(
         cmd,
         capture_output=True,
