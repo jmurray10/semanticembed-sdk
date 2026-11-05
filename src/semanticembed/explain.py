@@ -33,7 +33,7 @@ The encoding computes six structural properties per node in a directed graph:
 Risk patterns:
 - SPOF: Low independence + high criticality = only path, high blast radius
 - Amplification: High fanout + high criticality = failure multiplies downstream
-- Convergence sink: CONVERGENCE_SINK fires when a node has 3 or more callers
+- Convergence sink: Many upstream services depend on one aggregation point = a failure there reaches every caller
 - Deep bottleneck: High depth + high criticality = hard to diagnose from edge
 - Monitoring gap: High criticality but not at service edge = likely missing from dashboards
 

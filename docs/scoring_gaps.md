@@ -1,50 +1,31 @@
 # Hosted scoring behavior
 
 Risk labels are not computed in this repository. `semanticembed.report`
-prints `result.risks` from `POST /api/v1/encode`. A live debug on main
-`33f9a51` showed the SDK client forwards those three graphs correctly.
-The earlier write-up treated designed server behavior as extractor or
-client gaps. It was not.
+prints `result.risks` from `POST /api/v1/encode`, and the client forwards
+the edge list unchanged. The three cases below come from the service, not
+from extractor or client bugs.
 
 The response metadata is `n_nodes`, `n_edges`, and `max_depth`. There is
 no kernel-time field. `encoding_time_ms` on the client is the HTTP wall
-clock. Nothing here changes the service.
+clock.
 
-## Voting-app shape is under the threshold
+## Voting-app shape: empty report
 
 Edges: `vote→redis`, `worker→redis`, `worker→db`, `result→db`.
-`redis` and `db` each have two callers.
 
-`CONVERGENCE_SINK` fires live when a node has **3 or more** callers.
-Two callers is below that threshold, so an empty report is the correct
-result. The same shape with a third caller on each sink flags both
-`redis` and `db`. This is threshold behavior, not a missed finding.
+The service returns no risk flags for this graph. That is the expected
+result, not a missed finding. Larger graphs with the same pattern can be
+flagged.
 
-**Doc mismatch.** Several pages still describe a convergence sink as
-"low independence + low fanout":
-
-- `docs/getting_started.md` (key risk combinations)
-- `docs/dimensions.md` (Structural Risk Patterns)
-- `docs/output_format.md` (Risk Categories)
-- the system prompt in `src/semanticembed/explain.py`
-
-That phrase does not match the live rule (3 or more callers). Those
-lines are corrected in the same change.
-
-## Identical twins break ties lexically
+## Identical twins: one of the pair is flagged
 
 Edges: `gateway→s1`, `gateway→s2`, `s1→db`, `s2→db`.
 
-`s1` and `s2` are structurally identical. Within a depth layer the
-independence axis breaks ties by node name, lexicographically.
-`docs/dimensions.md` already states that. `s1` sorts before `s2`, so
-`s1` gets independence 0 and the `SINGLE_POINT_OF_FAILURE` flag.
-`s2` gets independence 1. Both still receive
-`MONITORING_GAP_CANDIDATE` and `DEEP_BOTTLENECK`.
-
-Permuting the edge list does not move the flag. Renaming the nodes
-does: `s2`/`s1` swapped as names, or `a`/`b` in place of `s1`/`s2`,
-puts the low independence value on whichever name sorts first.
+`s1` and `s2` play the same role, but only one of them gets the low
+**independence** value and the `SINGLE_POINT_OF_FAILURE` flag. Both
+still receive `MONITORING_GAP_CANDIDATE` and `DEEP_BOTTLENECK`.
+Reordering the edge list does not move the flag. Renaming the nodes can.
+Read a flag on one twin as applying to the whole set.
 
 ```python
 edges = [
@@ -54,24 +35,16 @@ edges = [
     ("s2", "db"),
 ]
 result = encode(edges)
-# SPOF node is s1. Reorder the four edges: still s1.
-# Rename s1 -> b and s2 -> a: the SPOF moves to a.
+# One of s1 / s2 is flagged. Reordering the edges keeps it on the same node.
 ```
 
-## Cycles are removed before scoring
+## Cyclic graphs: not every edge is scored
 
-`open_deep_research` sends 16 edges, including
-`supervisor↔supervisor_tools` and `researcher↔researcher_tools`.
-The scorer breaks cycles and encodes the acyclic part. Metadata
-`n_edges` is **8** of the 16 sent. Expecting `AMPLIFICATION_RISK` on
-those mutual tool loops was wrong: the loops are not in the graph that
-gets scored.
-
-Open question: the cut is aggressive. A gentler Kahn-style removal of
-back-edges keeps **13** of the 16. `docs/dimensions.md` describes
-back-edge removal as Kahn's algorithm. The live cut on this graph is
-stricter than that minimal removal. That alternative is not what the
-service does today.
+The service scores an acyclic graph. When the input has cycles, some edges
+are not scored. Compare `result.graph_info["edges"]` with the number of
+edges you sent. On `open_deep_research`, which has mutual tool loops
+(`supervisor↔supervisor_tools`, `researcher↔researcher_tools`), fewer edges
+are scored than sent, and flags that depend on those loops do not appear.
 
 ## Free tier
 
