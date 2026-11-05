@@ -40,8 +40,7 @@ result = encode(edges)
 
 ## Cyclic graphs: not every edge is scored
 
-The service scores an acyclic graph. When the input has cycles, some edges
-are not scored. Compare `result.graph_info["edges"]` with the number of
+When the input has cycles, some edges are not scored. Compare `result.graph_info["edges"]` with the number of
 edges you sent. On `open_deep_research`, which has mutual tool loops
 (`supervisor↔supervisor_tools`, `researcher↔researcher_tools`), fewer edges
 are scored than sent, and flags that depend on those loops do not appear.
