@@ -1,0 +1,87 @@
+name: Leak guard
+
+# Checks the lines a pull request adds for internals of the hosted service:
+# a risk flag's cutoff, the steps that compute a value, how the input graph
+# is changed before scoring, or how ties are broken. Uses TypeSafe's Jev
+# model (scripts/jev/leak_guard.py, measurements in docs/jev.md).
+#
+# Needs the repository secret TYPESAFE_API_KEY. Without it the check fails
+# rather than passing unchecked. Pull requests from forks get no secrets, so
+# they need a maintainer's review for this instead.
+#
+# The guard's code is taken from the base branch, never from the pull
+# request, so a pull request cannot change what runs with the key.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: leak-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  leak-guard:
+    name: Check added lines
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the pull request (data only)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          path: pr
+          persist-credentials: false
+
+      - name: Check out the guard from the base branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Install the guard's one dependency
+        run: python -m pip install "httpx==0.28.1"
+
+      - name: Run the leak guard
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          FROM_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+          ACTOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          if [ ! -f trusted/scripts/jev/leak_guard.py ]; then
+            echo "::notice::The leak guard is not on the base branch yet. It checks pull requests once it is merged."
+            exit 0
+          fi
+          if [ -z "$TYPESAFE_API_KEY" ] && [ "$FROM_FORK" = "true" ]; then
+            echo "::error::Pull requests from forks get no secrets, so the leak guard cannot run. A maintainer must review the added lines."
+            exit 2
+          fi
+          if [ -z "$TYPESAFE_API_KEY" ] && [ "$ACTOR" = "dependabot[bot]" ]; then
+            echo "::notice::Dependabot pull requests get no repository secrets. Leak guard not run; review the version bumps by hand."
+            exit 0
+          fi
+          cd trusted
+          python -I scripts/jev/leak_guard.py --repo ../pr --base "$BASE_SHA" --head "$HEAD_SHA" \
+            --log ../leak_guard_log.jsonl --json-out ../leak_guard_results.json
+
+      - name: Keep the requests and answers
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: leak-guard-log
+          path: |
+            leak_guard_log.jsonl
+            leak_guard_results.json
+          if-no-files-found: ignore
+          retention-days: 30
