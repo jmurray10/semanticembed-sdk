@@ -1,0 +1,5 @@
+# Changes to these paths need review from the owner once main has a ruleset
+# that requires code-owner review.
+*                   @jmurray10
+/.github/            @jmurray10
+/src/semanticembed/  @jmurray10
