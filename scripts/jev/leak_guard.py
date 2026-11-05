@@ -147,6 +147,7 @@ GUARD_FILES = frozenset({
     "scripts/jev/jev_client.py",
     "scripts/jev/questions.py",
     "tests/test_jev_scripts.py",
+    "docs/jev.md",
 })
 
 
