@@ -153,3 +153,37 @@ def test_find_edges_llm_path_sends_redacted_text(tmp_path, monkeypatch):
     assert edges == [("app", "db")]
     blob = "".join(content for _, content in sent["files"])
     assert SK not in blob and "[REDACTED]" in blob
+
+
+def test_redact_keeps_service_addresses_under_sensitive_keys():
+    text = (
+        "  - AUTH_TOKEN_URL=http://auth-svc:8080\n"
+        "  - KEY_SERVICE_HOST=kms\n"
+        "  - CREDENTIALS_SERVICE_URL: http://creds\n"
+        '{"tokenEndpoint": "https://idp.internal/token"}\n'
+        "  - API_TOKEN=abc123xyz\n"
+    )
+    out, _ = fe._redact(text)
+    for kept in ("http://auth-svc:8080", "=kms", "http://creds", "https://idp.internal/token"):
+        assert kept in out, kept
+    assert "abc123xyz" not in out
+
+
+@pytest.mark.parametrize(
+    "hostile",
+    [
+        " \n" * 20000,                                   # whitespace-only lines
+        "\t \t\n" * 20000,
+        "-----BEGIN RSA PRIVATE KEY-----\n" * 2000,      # BEGIN markers, no END
+        "a" * 60000 + "token=x\n",
+        '"token": "' + "x" * 60000,
+    ],
+    ids=["blank-lines", "tab-lines", "pem-no-end", "long-word", "unclosed-quote"],
+)
+def test_redact_is_fast_on_hostile_input(hostile):
+    """A scanned repo must not be able to hang find_edges (regex backtracking)."""
+    import time
+
+    t0 = time.perf_counter()
+    fe._redact(hostile)
+    assert time.perf_counter() - t0 < 2.0
