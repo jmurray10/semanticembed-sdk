@@ -892,16 +892,25 @@ def from_requirements(path: str = "requirements.txt") -> list[tuple[str, str]]:
 
     The source node is the parent directory name. Comments, options, and
     editable self-installs (``.``) are skipped. ``-r other.txt`` is followed
-    when it stays inside the same directory.
+    only when the file, after resolving symlinks, is inside the starting
+    file's directory. Each line of a followed file becomes a node name that
+    is sent to the API, so ``-r ../../.aws/credentials`` must not be read.
     """
     root = os.path.abspath(path)
+    base = os.path.dirname(os.path.realpath(root))
     project = Path(root).parent.name
     edges: list[tuple[str, str]] = []
     seen_files: set[str] = set()
 
+    def _inside(file_path: str) -> bool:
+        try:
+            return os.path.commonpath([base, os.path.realpath(file_path)]) == base
+        except ValueError:  # different drives on Windows
+            return False
+
     def _read(file_path: str) -> None:
         file_path = os.path.abspath(file_path)
-        if file_path in seen_files or not os.path.isfile(file_path):
+        if file_path in seen_files or not os.path.isfile(file_path) or not _inside(file_path):
             return
         seen_files.add(file_path)
         try:
