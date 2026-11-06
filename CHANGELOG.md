@@ -2,7 +2,7 @@
 
 All notable changes to the SemanticEmbed SDK.
 
-## Unreleased
+## 0.7.5 — Security fixes, parser corrections
 
 ### Security
 
