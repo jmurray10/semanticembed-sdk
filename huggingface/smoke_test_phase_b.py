@@ -12,7 +12,6 @@ import sys
 
 from gradio_client import Client
 
-
 SPACE = "jmurray10/semanticembed-agent-risk"
 
 

@@ -12,7 +12,6 @@ import sys
 
 from gradio_client import Client
 
-
 SPACE = "jmurray10/semanticembed-agent-risk"
 
 
@@ -35,10 +34,11 @@ def main() -> int:
 
     print("\n[1] Drift analyze: same content both sides ...")
     out = c.predict("LangGraph", BASE, BASE, api_name="/analyze_drift")
-    if not isinstance(out, (list, tuple)) or len(out) != 3:
-        print(f"FAIL: expected 3-tuple, got {out!r}", file=sys.stderr)
+    # summary, plot, table, node picker, selected-node detail
+    if not isinstance(out, (list, tuple)) or len(out) != 5:
+        print(f"FAIL: expected 5 outputs, got {type(out).__name__} of {len(out)}", file=sys.stderr)
         return 1
-    summary, plot, table = out
+    summary, _plot, _table, _picker, _detail = out
     print(f"summary head: {summary[:200]!r}")
     if "0 added" not in summary or "0 removed" not in summary:
         print(f"FAIL: same-content drift didn't report 0/0: {summary!r}", file=sys.stderr)
@@ -46,7 +46,7 @@ def main() -> int:
 
     print("\n[2] Drift analyze: extra edge added ...")
     out2 = c.predict("LangGraph", BASE, EXTRA, api_name="/analyze_drift")
-    summary2, plot2, table2 = out2
+    summary2, _plot2, table2, _picker2, _detail2 = out2
     print(f"summary head: {summary2[:200]!r}")
     # Same set of nodes (no nodes added), but edge count grows
     if "5 edges" not in summary2 or "6 edges" not in summary2:
