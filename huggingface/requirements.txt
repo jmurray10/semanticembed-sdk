@@ -1,4 +1,4 @@
-gradio>=5.30,<6
+gradio>=6.31.0,<7
 semanticembed[extract]>=0.7.3
 pandas>=2.0
 networkx>=3.0
