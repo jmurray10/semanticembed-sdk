@@ -22,7 +22,6 @@ import httpx
 
 from .extract import _dedupe
 
-
 _RETRYABLE_STATUS = {502, 503, 504}
 _RETRY_BACKOFF_SECONDS = 0.5
 

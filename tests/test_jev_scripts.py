@@ -15,9 +15,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts" / "jev"))
 
-import jev_client  # noqa: E402
-import leak_guard  # noqa: E402
-from questions import LEAK_ALL_QUESTIONS, LEAK_QUESTIONS  # noqa: E402
+import jev_client
+import leak_guard
+from questions import LEAK_QUESTIONS
 
 DIFF = """diff --git a/docs/a.md b/docs/a.md
 index 1111111..2222222 100644

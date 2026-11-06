@@ -2,24 +2,29 @@
 
 from __future__ import annotations
 
+from . import extract, live
 from .client import (
-    encode, encode_file, report, drift, encode_diff,
-    aencode, aencode_file, aencode_diff,
+    aencode,
+    aencode_diff,
+    aencode_file,
     clear_encode_cache,
+    drift,
+    encode,
+    encode_diff,
+    encode_file,
+    report,
 )
-from .models import SemanticResult, RiskReport, RiskEntry, DIMENSION_NAMES
+from .dedupe import dedupe_edges
 from .exceptions import (
-    SemanticEmbedError,
+    APIError,
     AuthenticationError,
     NodeLimitError,
-    APIError,
     SemanticConnectionError,
+    SemanticEmbedError,
 )
-from . import extract
-from . import live
-from .dedupe import dedupe_edges
-from .explain import explain, ask
+from .explain import ask, explain
 from .find_edges import find_edges
+from .models import DIMENSION_NAMES, RiskEntry, RiskReport, SemanticResult
 
 __version__ = "0.7.5"
 

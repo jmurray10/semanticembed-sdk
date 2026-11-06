@@ -17,7 +17,6 @@ Requirements:
 
 import json
 import sys
-from typing import Any
 
 try:
     from google import genai

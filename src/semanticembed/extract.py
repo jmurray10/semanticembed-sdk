@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import ast
 import glob
+import itertools
 import os
 import re
 from pathlib import Path
@@ -30,7 +31,7 @@ def _load_yaml(path: str) -> Any:
         raise ImportError(
             "PyYAML is required for infrastructure parsing. "
             "Install it with: pip install pyyaml"
-        )
+        ) from None
     with open(path) as f:
         return list(yaml.safe_load_all(f))
 
@@ -43,7 +44,7 @@ def _load_single_yaml(path: str) -> Any:
         raise ImportError(
             "PyYAML is required for infrastructure parsing. "
             "Install it with: pip install pyyaml"
-        )
+        ) from None
     with open(path) as f:
         return yaml.safe_load(f)
 
@@ -1029,7 +1030,7 @@ def _load_cfn_doc(path: str):
     try:
         import yaml
     except ImportError:
-        raise ImportError("PyYAML is required to parse CloudFormation templates.")
+        raise ImportError("PyYAML is required to parse CloudFormation templates.") from None
 
     # CFN YAML uses short intrinsic tags like `!Ref` and `!GetAtt`. The default
     # SafeLoader chokes on these; we register no-op constructors that yield a
@@ -1922,9 +1923,9 @@ def from_crewai(path: str) -> list[tuple[str, str]]:
             if "manager_agent" in kwargs:
                 manager = _ast_str_arg(kwargs["manager_agent"])
             if manager:
-                for a in agents_list:
-                    if a != manager:
-                        edges.append((manager, a))
+                for member in agents_list:
+                    if member != manager:
+                        edges.append((manager, member))
 
     edges.extend(_crewai_decorator_edges(tree, path))
     return _dedupe(edges)
@@ -2014,7 +2015,7 @@ def _crewai_decorator_edges(tree: ast.AST, path: str) -> list[tuple[str, str]]:
 
         # Class dict keeps the first insertion slot and the last function body.
         order: list[str] = []
-        last_def: dict[str, ast.AST] = {}
+        last_def: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
         for method in task_methods:
             if method.name not in last_def:
                 order.append(method.name)
@@ -2065,11 +2066,11 @@ def _crewai_decorator_edges(tree: ast.AST, path: str) -> list[tuple[str, str]]:
                         agent_name = spec.get("agent")
                         if isinstance(agent_name, str) and agent_name in agent_set:
                             edges.append((agent_name, task_name))
-                    ctx = spec.get("context") or []
-                    if isinstance(ctx, str):
-                        ctx = [ctx]
-                    if isinstance(ctx, list):
-                        for item in ctx:
+                    yaml_ctx = spec.get("context") or []
+                    if isinstance(yaml_ctx, str):
+                        yaml_ctx = [yaml_ctx]
+                    if isinstance(yaml_ctx, list):
+                        for item in yaml_ctx:
                             if not isinstance(item, str):
                                 continue
                             # CrewBase resolves context entries as task method
@@ -2102,7 +2103,7 @@ def _crewai_decorator_edges(tree: ast.AST, path: str) -> list[tuple[str, str]]:
                 if agent != manager:
                     edges.append((manager, agent))
         if process == "sequential":
-            for left, right in zip(order, order[1:]):
+            for left, right in itertools.pairwise(order):
                 edges.append((left, right))
     return edges
 
@@ -2146,7 +2147,7 @@ def from_autogen(path: str) -> list[tuple[str, str]]:
 
     def _agents_list(call: ast.Call) -> list[str]:
         """Pull the agents list — either positional first arg or `agents=` kwarg."""
-        node = None
+        node: ast.expr | None = None
         if call.args and isinstance(call.args[0], (ast.List, ast.Tuple)):
             node = call.args[0]
         else:
@@ -2330,7 +2331,8 @@ def from_directory(
                 if any(p in fp for p in ("node_modules", ".venv", "venv", ".git")):
                     continue
                 try:
-                    head = open(fp, encoding="utf-8", errors="replace").read(2048)
+                    with open(fp, encoding="utf-8", errors="replace") as fh:
+                        head = fh.read(2048)
                 except OSError:
                     continue
                 if "apiVersion:" in head and "kind:" in head:
@@ -2458,7 +2460,8 @@ def from_directory(
         )]
     for fpath in py_files:
         try:
-            head = open(fpath, encoding="utf-8", errors="replace").read(4096)
+            with open(fpath, encoding="utf-8", errors="replace") as fh:
+                head = fh.read(4096)
         except OSError:
             continue
         for label, prefixes, parser in py_specs:

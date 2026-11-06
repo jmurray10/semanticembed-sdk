@@ -20,9 +20,6 @@ import sys
 import textwrap
 from pathlib import Path
 
-import pytest
-
-
 SKILL_SCRIPT = Path(__file__).resolve().parent.parent / "skill" / "analyze.py"
 
 

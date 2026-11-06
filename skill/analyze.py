@@ -43,13 +43,12 @@ from semanticembed.exceptions import (
     SemanticEmbedError,
 )
 
-
 _DIM_NAMES = ("depth", "independence", "hierarchy", "throughput", "criticality", "fanout")
 
 
 def _vec_dict(vec: Any) -> dict[str, float]:
     if isinstance(vec, list):
-        return {d: float(v) for d, v in zip(_DIM_NAMES, vec)}
+        return {d: float(v) for d, v in zip(_DIM_NAMES, vec, strict=False)}
     if isinstance(vec, dict):
         return {d: float(vec.get(d, 0.0)) for d in _DIM_NAMES}
     return {d: float(getattr(vec, d, 0.0)) for d in _DIM_NAMES}
@@ -103,7 +102,7 @@ def _norm(e: Any) -> list[str]:
 
 def _print_table(edges: list[list[str]], result, risk_report) -> None:
     print(f"\n{'=' * 60}")
-    print(f"SemanticEmbed 6D Analysis")
+    print("SemanticEmbed 6D Analysis")
     print(
         f"{result.graph_info['nodes']} nodes  |  {result.graph_info['edges']} edges  "
         f"|  {result.encoding_time_ms:.1f}ms"

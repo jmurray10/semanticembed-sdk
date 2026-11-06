@@ -58,7 +58,7 @@ class Jev:
     def close(self) -> None:
         self._http.close()
 
-    def __enter__(self) -> "Jev":
+    def __enter__(self) -> Jev:
         return self
 
     def __exit__(self, *exc: object) -> None:

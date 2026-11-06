@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import time
+from collections import OrderedDict
 from typing import Any
 
 import httpx
 
-from .exceptions import APIError, AuthenticationError, SemanticConnectionError, NodeLimitError
+from .exceptions import APIError, AuthenticationError, NodeLimitError, SemanticConnectionError
 from .models import DIMENSION_NAMES, RiskEntry, RiskReport, SemanticResult
 
 DEFAULT_API_URL = "https://semanticembed-api-production.up.railway.app"
@@ -23,8 +26,9 @@ def _resolve_key(license_key: str | None) -> str:
 
     # 2. Module-level attribute (set by user: semanticembed.license_key = "...")
     import semanticembed
-    if getattr(semanticembed, "license_key", None):
-        return semanticembed.license_key
+    module_key = getattr(semanticembed, "license_key", None)
+    if module_key:
+        return str(module_key)
 
     # 3. Environment variable
     env_key = os.environ.get("SEMANTICEMBED_LICENSE_KEY") or os.environ.get("SEMANTICEMBED_API_KEY")
@@ -104,8 +108,7 @@ _RETRY_BACKOFF_SECONDS = 0.5
 # pairs from the normalized edge list. Off by default — only populated when
 # the caller passes `cache=True` to encode(). Survives the lifetime of the
 # process; clear with clear_encode_cache().
-from collections import OrderedDict
-_ENCODE_CACHE: OrderedDict[frozenset, "SemanticResult"] = OrderedDict()
+_ENCODE_CACHE: OrderedDict[frozenset, SemanticResult] = OrderedDict()
 _ENCODE_CACHE_MAX = 64
 
 
@@ -127,7 +130,12 @@ def _cache_get(key: frozenset):
     return None
 
 
-def _cache_put(key: frozenset, result: "SemanticResult") -> None:
+def _read_json(path: str) -> Any:
+    with open(path) as f:
+        return json.load(f)
+
+
+def _cache_put(key: frozenset, result: SemanticResult) -> None:
     _ENCODE_CACHE[key] = result
     _ENCODE_CACHE.move_to_end(key)
     while len(_ENCODE_CACHE) > _ENCODE_CACHE_MAX:
@@ -326,7 +334,7 @@ def drift(
     for node in sorted(all_nodes):
         v_before = before.vectors.get(node, [0.0] * 6)
         v_after = after.vectors.get(node, [0.0] * 6)
-        deltas = {}
+        deltas: dict[str, Any] = {}
         for i, dim in enumerate(DIMENSION_NAMES):
             delta = v_after[i] - v_before[i]
             if abs(delta) > 1e-6:
@@ -352,7 +360,7 @@ def encode_diff(
     license_key: str | None = None,
     api_url: str | None = None,
     timeout: float = 60.0,
-) -> dict[str, dict[str, dict[str, float]]]:
+) -> dict[str, dict[str, Any]]:
     """Encode two edge lists and return structural drift in one call.
 
     Convenience function that combines encode() + encode() + drift().
@@ -392,7 +400,6 @@ async def _apost_with_retry(
     timeout: float,
 ) -> httpx.Response:
     """Async sibling of _post_with_retry. One retry on 502/503/504/ConnectError/ReadTimeout."""
-    import asyncio
 
     last_exc: Exception | None = None
     for attempt in range(2):
@@ -510,10 +517,7 @@ async def aencode_file(
     cache: bool = False,
 ) -> SemanticResult:
     """Async version of :func:`encode_file`."""
-    import json
-
-    with open(path) as f:
-        data = json.load(f)
+    data = await asyncio.to_thread(_read_json, path)
     edges = data.get("edges", data) if isinstance(data, dict) else data
     return await aencode(
         edges, license_key=license_key, api_url=api_url, timeout=timeout, cache=cache
@@ -529,9 +533,8 @@ async def aencode_diff(
     api_url: str | None = None,
     timeout: float = 60.0,
     cache: bool = False,
-) -> dict[str, dict[str, dict[str, float]]]:
+) -> dict[str, dict[str, Any]]:
     """Async version of :func:`encode_diff`. Issues both encodes in parallel."""
-    import asyncio
 
     before_t, after_t = await asyncio.gather(
         aencode(edges_before, license_key=license_key, api_url=api_url,

@@ -15,13 +15,11 @@ import pytest
 import respx
 
 import semanticembed as se
+from semanticembed.client import DEFAULT_API_URL, FREE_TIER_LIMIT
 from semanticembed.exceptions import (
     AuthenticationError,
     NodeLimitError,
-    SemanticConnectionError,
 )
-from semanticembed.client import DEFAULT_API_URL, FREE_TIER_LIMIT
-
 
 VALID_BODY = {
     "embeddings": {
