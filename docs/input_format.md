@@ -43,7 +43,7 @@ result = encode_file("my_graph.json")
 }
 ```
 
-**Required:** `edges` array with `source` and `target` string fields.
+**Required:** `edges` array. Each edge is an object with `source` / `target` (also accepted: `src` / `tgt` or `from` / `to`) or a `[source, target]` pair.
 
 **Optional:** `name`, `description`.
 
@@ -51,11 +51,11 @@ result = encode_file("my_graph.json")
 
 ## Requirements
 
-- Directed acyclic graph (DAG). Cycles are automatically broken.
-- Minimum 3 nodes for meaningful analysis.
+- Any directed graph; cycles are accepted. See [docs/scoring_gaps.md](scoring_gaps.md) for how results read on cyclic input.
+- At least 2 edges (the client raises `ValueError` otherwise).
 - Free tier: 50 nodes max. Paid tier: unlimited.
 - Node names: unique strings.
-- Self-loops and duplicate edges are handled automatically.
+- `encode()` sends edges as given. Use `se.dedupe_edges()` to drop duplicates and self-loops client-side. The `extract.*` parsers already drop self-loops and duplicate edges.
 
 ---
 
@@ -79,7 +79,10 @@ edges = se.extract.from_pulumi("__main__.py")      # Python Pulumi
 
 # Code dependency graphs
 edges = se.extract.from_python_imports("src/", depth=2)
+edges = se.extract.from_package_json("package.json")
 edges = se.extract.from_package_json_workspaces(".")
+edges = se.extract.from_pyproject("pyproject.toml")
+edges = se.extract.from_requirements("requirements.txt")
 
 # AI agent frameworks (AST-only, no need to install the framework)
 edges = se.extract.from_langgraph("workflow.py")
@@ -126,9 +129,13 @@ extracts an edge list:
 edges, sources, log = se.find_edges(".", provider="claude")
 ```
 
-`provider` can be `"claude"` (requires `ANTHROPIC_API_KEY`) or
-`"gemini"` (requires `GOOGLE_API_KEY`). The deterministic scan is
-always tried first; the LLM is only invoked as a fallback.
+`provider` can be `"claude"` (needs `ANTHROPIC_API_KEY` and
+`pip install anthropic`) or `"gemini"` (needs `GOOGLE_API_KEY` or
+`GEMINI_API_KEY`, and `pip install 'semanticembed[agent-gemini]'`). Both
+accept `api_key=` instead of the env var. The deterministic scan is
+always tried first; the LLM is only invoked as a fallback, and it sends
+file text to the provider. See `find_edges` in the
+[API Reference](api_reference.md) for what is sent.
 
 ---
 
@@ -162,7 +169,10 @@ edges = se.dedupe_edges(
 | **AWS CDK** (Python) | Construct kwarg references | `extract.from_aws_cdk()` |
 | **Pulumi** (Python) | Resource kwarg references | `extract.from_pulumi()` |
 | **Python codebase** | Module import graph | `extract.from_python_imports()` |
+| **Node.js package** | `dependencies` / `devDependencies` / `peerDependencies` | `extract.from_package_json()` |
 | **Node.js monorepo** | Inter-package dependencies | `extract.from_package_json_workspaces()` |
+| **pyproject.toml** | PEP 621, dependency groups, Poetry | `extract.from_pyproject()` |
+| **requirements.txt** | pip requirements (`-r` followed inside its directory) | `extract.from_requirements()` |
 | **OpenTelemetry traces** | Parent-child span service relationships | `extract.from_otel_traces()` |
 | **LangGraph workflow** | `add_edge` / `add_conditional_edges` | `extract.from_langgraph()` |
 | **CrewAI** | `Task(agent=...)` / `Crew(manager_agent=...)` | `extract.from_crewai()` |

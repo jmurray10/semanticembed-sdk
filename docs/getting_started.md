@@ -10,7 +10,7 @@ Go from zero to structural risk analysis in under 2 minutes.
 pip install semanticembed
 ```
 
-Requires Python 3.9+. Only dependency is `httpx`.
+Requires Python 3.10+. Only dependency is `httpx`.
 
 ---
 
@@ -100,12 +100,13 @@ result.encoding_time_ms
 | **Criticality** | On many end-to-end paths (high blast radius) | On few or no critical paths |
 | **Fanout** | Broadcasts to many downstream (amplifier) | Receives from many upstream (aggregator) |
 
-**Key risk combinations:**
+**Risk categories.** The hosted service decides which nodes to flag. Each flag has one of five categories:
 
-- High criticality + low independence = **Structural SPOF** (only path, high blast radius)
-- High fanout + high criticality = **Amplification risk** (failure multiplies)
-- **Convergence sink** — many upstream services depend on one aggregation point, so a failure there is felt by every caller.
-- High throughput + low independence = **Hidden bottleneck** (traffic with no backup)
+- `SINGLE_POINT_OF_FAILURE` — the only option at its pipeline stage.
+- `AMPLIFICATION_RISK` — a failure here can cascade to many downstream dependents.
+- `CONVERGENCE_SINK` — many upstream services depend on this one target.
+- `DEEP_BOTTLENECK` — a choke point deep in the pipeline, hard to diagnose from edge monitoring.
+- `MONITORING_GAP_CANDIDATE` — on critical paths but not at the service edge, so it may be missing from dashboards.
 
 ---
 
@@ -116,16 +117,26 @@ risk = report(result)
 print(risk)
 ```
 
+Abbreviated and illustrative. The flags, nodes and descriptions come from the hosted service and will differ for your graph:
+
 ```
 STRUCTURAL RISK REPORT
 ======================
 
 SINGLE POINT OF FAILURE:
-  - order-service    | high criticality (0.122) with limited redundancy
+  - order-service                  | <description from the hosted service>
 
-CONVERGENCE SINK:
-  - database         | receiving from upstream with no downstream dependents
+...
+
+WHAT TO DO
+----------
+  >> order-service: Add a redundant path or fallback service so this node is not the only option at its pipeline stage.
+  ...
+
+Total: N risks (N critical, N warning, N info)
 ```
+
+The report groups flags by category, then prints one suggested action per category and a count by severity.
 
 ### Filter risks programmatically
 
@@ -199,7 +210,7 @@ print(f"Found {len(edges)} edges from {sources}")
 result = se.encode(edges)
 ```
 
-Requires `pyyaml` for YAML parsing: `pip install pyyaml`
+Requires `pyyaml` for YAML parsing: `pip install 'semanticembed[extract]'`
 
 ---
 
@@ -289,5 +300,6 @@ for r in result.risks:
 | [06 - CI/CD Pipelines](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/06_cicd_pipelines.ipynb) | Build and data pipeline analysis |
 | [07 - OpenTelemetry](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/07_opentelemetry.ipynb) | Extract edges from OTel traces |
 | [08 - Qwen Compression](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/08_qwen_compression.ipynb) | Structural pruning for LLM speedup |
+| [09 - Quantum Reachability](https://colab.research.google.com/github/jmurray10/semanticembed-sdk/blob/main/notebooks/09_quantum_reachability.ipynb) | Run a quantum-walk reachability check on IBM Q's free tier and compare it with the criticality axis |
 
 See [API Reference](api_reference.md) for full function documentation.
