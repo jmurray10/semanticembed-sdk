@@ -5,7 +5,7 @@ name: Leak guard
 # is changed before scoring, or how ties are broken. Uses TypeSafe's Jev
 # model (scripts/jev/leak_guard.py, measurements in docs/jev.md).
 #
-# Needs the repository secret TYPESAFE_API_KEY. Without it the check fails
+# Needs the secret TYPESAFE_API_KEY in the `jev` environment. Without it the check fails
 # rather than passing unchecked. Pull requests from forks get no secrets, so
 # they need a maintainer's review for this instead.
 #
@@ -27,6 +27,7 @@ jobs:
   leak-guard:
     name: Check added lines
     runs-on: ubuntu-latest
+    environment: jev  # only jobs in this environment can read TYPESAFE_API_KEY
     timeout-minutes: 15
     steps:
       - name: Check out the pull request (data only)

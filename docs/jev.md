@@ -11,7 +11,8 @@ package, and nothing a user installs talks to TypeSafe.
 | Drift check | `jev-drift.yml`, weekly | the invented cases in `scripts/jev/canary_cases.json` | Jev's answers moved from the stored baseline |
 | Edge audit | `corpus.yml`, manual | the public corpus files and their extracted edges | never (report only); errors are reported |
 
-All three need the repository secret `TYPESAFE_API_KEY`. The key is only put
+All three need the secret `TYPESAFE_API_KEY`, stored in the GitHub environment
+`jev` so that no other job can read it. The key is only put
 in the `Authorization` header; it is never printed or logged. Only public
 repository content is sent. Do not point these scripts at private code.
 
