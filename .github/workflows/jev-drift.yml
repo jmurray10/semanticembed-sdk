@@ -6,7 +6,7 @@ name: Jev drift
 # failing, how the moving alias jev-latest answers, so a new model release
 # shows up before the pinned version is changed.
 #
-# Needs the repository secret TYPESAFE_API_KEY. About 48 requests a run.
+# Needs the secret TYPESAFE_API_KEY in the `jev` environment. About 48 requests a run.
 
 on:
   schedule:
@@ -20,6 +20,7 @@ jobs:
   drift:
     name: Compare with baseline
     runs-on: ubuntu-latest
+    environment: jev  # only jobs in this environment can read TYPESAFE_API_KEY
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

@@ -11,6 +11,7 @@ jobs:
   score:
     name: Score pinned corpus
     runs-on: ubuntu-latest
+    environment: jev  # only jobs in this environment can read TYPESAFE_API_KEY
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
