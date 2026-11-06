@@ -1,4 +1,4 @@
-"""The Gemini agent CLI passes --model through to the model call."""
+"""The Gemini agent CLI loads without claude-agent-sdk and passes --model through."""
 
 from __future__ import annotations
 
@@ -9,18 +9,33 @@ import types
 import pytest
 
 
+class _Anything:
+    """Accepts any constructor call; stands in for google.genai.types classes."""
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+
+class _TypesModule(types.ModuleType):
+    def __getattr__(self, name):
+        return _Anything
+
+
 @pytest.fixture
 def gemini_agent(monkeypatch):
     # Stand-in for google-genai so the test needs neither the package nor a key.
     google = types.ModuleType("google")
     genai = types.ModuleType("google.genai")
-    genai.Client = lambda **kwargs: object()
-    genai.types = types.ModuleType("google.genai.types")
+    genai.Client = _Anything
+    genai.types = _TypesModule("google.genai.types")
     google.genai = genai
     monkeypatch.setitem(sys.modules, "google", google)
     monkeypatch.setitem(sys.modules, "google.genai", genai)
     monkeypatch.setitem(sys.modules, "google.genai.types", genai.types)
-    monkeypatch.delitem(sys.modules, "semanticembed.agent.gemini_agent", raising=False)
+    # The Gemini agent must load without claude-agent-sdk installed.
+    monkeypatch.setitem(sys.modules, "claude_agent_sdk", None)
+    for mod in ("semanticembed.agent", "semanticembed.agent.agent", "semanticembed.agent.gemini_agent"):
+        monkeypatch.delitem(sys.modules, mod, raising=False)
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     return importlib.import_module("semanticembed.agent.gemini_agent")
 
