@@ -30,7 +30,31 @@ Graph metadata: `{"nodes": 11, "edges": 15, "max_depth": 3}`.
 
 ### `result.encoding_time_ms`
 
-Encoding time in milliseconds.
+Wall-clock milliseconds for the HTTP request (including any retry), measured by the client. Not server compute time.
+
+### `result.risks`
+
+List of `RiskEntry` objects returned by the hosted service. Each has:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `node` | `str` | Flagged node name |
+| `category` | `str` | One of the five categories below |
+| `severity` | `str` | `critical`, `warning`, or `info` |
+| `description` | `str` | Human-readable explanation from the service |
+| `value` | `float` | Numeric value the service reports with the flag |
+
+`entry.json()` returns the same fields as a dict.
+
+### `result.nodes`, `result.dimensions(node)`, `result[node]`
+
+```python
+result.nodes                     # ['frontend', 'api-gateway', ...]
+result["api-gateway"]            # [0.25, 0.5, 0.333, 0.5, 0.102, 0.667]
+result.dimensions("api-gateway") # {'depth': 0.25, 'independence': 0.5, ...}
+```
+
+`result[node]` and `result.dimensions(node)` raise `KeyError` for an unknown node.
 
 ### `result.json()`
 
@@ -48,20 +72,23 @@ print(risk)
 
 ### Risk Categories
 
-- **Amplification risk** -- high fanout + high criticality
-- **Convergence sink** -- many upstream services depend on one aggregation point, so a failure there is felt by every caller.
-- **Structural SPOF** -- low independence + high criticality
-- **Hidden bottleneck** -- high throughput + low independence
+The hosted service decides which nodes to flag. `category` is one of:
+
+- `SINGLE_POINT_OF_FAILURE` -- the only option at its pipeline stage.
+- `AMPLIFICATION_RISK` -- a failure here can cascade to many downstream dependents.
+- `CONVERGENCE_SINK` -- many upstream services depend on this one target.
+- `DEEP_BOTTLENECK` -- a choke point deep in the pipeline, hard to diagnose from edge monitoring.
+- `MONITORING_GAP_CANDIDATE` -- on critical paths but not at the service edge, so it may be missing from dashboards.
 
 ### Severity Levels
 
-- **critical** -- structural single point of failure or monitoring gap
-- **warning** -- amplification risk, deep bottleneck, or high fanout
-- **info** -- convergence sink or low-risk structural note
+Severity (`critical`, `warning`, `info`) is assigned by the hosted service.
 
 ### Programmatic Access
 
 ```python
+import json
+
 for r in risk.risks:
     print(f"{r.node}: {r.category} ({r.severity})")
 
@@ -78,4 +105,12 @@ from semanticembed import drift
 changes = drift(result_before, result_after)
 ```
 
-Returns per-node, per-dimension deltas showing what changed and by how much.
+Returns per-node, per-dimension deltas showing what changed and by how much. Only changed nodes and dimensions appear.
+
+Pass `detail=True` to get `{"before": x, "after": y, "delta": d}` for each changed dimension instead of the delta alone:
+
+```python
+changes = drift(result_before, result_after, detail=True)
+```
+
+`encode_diff(edges_before, edges_after)` encodes both edge lists and returns the drift in one call. Its `detail` defaults to `True`.

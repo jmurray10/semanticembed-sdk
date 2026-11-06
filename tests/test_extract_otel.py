@@ -8,13 +8,11 @@ are dropped; only cross-service edges should appear.
 from __future__ import annotations
 
 import json
-import textwrap
 from pathlib import Path
 
 import pytest
 
 from semanticembed import extract
-
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

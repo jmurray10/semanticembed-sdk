@@ -13,8 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .models import DIMENSION_NAMES, SemanticResult, RiskReport
-
+from .models import DIMENSION_NAMES, RiskReport, SemanticResult
 
 # ---------------------------------------------------------------------------
 # System prompt — gives the LLM context about what 6D means
@@ -53,7 +52,7 @@ def _format_result_for_llm(result: SemanticResult) -> str:
     # Sort by criticality
     ranked = sorted(result.vectors.items(), key=lambda x: x[1][4], reverse=True)
     for node, vec in ranked:
-        dims = dict(zip(DIMENSION_NAMES, vec))
+        dims = dict(zip(DIMENSION_NAMES, vec, strict=False))
         lines.append(
             f"  {node}: depth={dims['depth']:.3f} indep={dims['independence']:.3f} "
             f"hier={dims['hierarchy']:.3f} thru={dims['throughput']:.3f} "

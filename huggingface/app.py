@@ -25,6 +25,7 @@ import gradio as gr
 import networkx as nx
 import pandas as pd
 import plotly.graph_objects as go
+
 import semanticembed as se
 from semanticembed.exceptions import (
     APIError,
@@ -32,7 +33,6 @@ from semanticembed.exceptions import (
     SemanticConnectionError,
     SemanticEmbedError,
 )
-
 
 HERE = Path(__file__).parent
 EXAMPLES_DIR = HERE / "examples"
@@ -109,7 +109,7 @@ def _parse_edges_text(text: str) -> list[tuple[str, str]]:
             raise ValueError(
                 f"Looks like JSON but failed to parse: {e.msg} (line {e.lineno}, col {e.colno}). "
                 "Expected `{\"edges\": [[\"a\",\"b\"], ...]}` or just `[[\"a\",\"b\"], ...]`."
-            )
+            ) from None
         edges = payload["edges"] if isinstance(payload, dict) and "edges" in payload else payload
         if not isinstance(edges, list):
             raise ValueError("JSON parsed but the top-level value isn't an edge list.")
@@ -196,7 +196,7 @@ _DIM_NAMES = ["depth", "independence", "hierarchy", "throughput", "criticality",
 
 def _vec_to_dict(vec) -> dict[str, float]:
     if isinstance(vec, list):
-        return {d: float(v) for d, v in zip(_DIM_NAMES, vec)}
+        return {d: float(v) for d, v in zip(_DIM_NAMES, vec, strict=False)}
     if isinstance(vec, dict):
         return {d: float(vec.get(d, 0.0)) for d in _DIM_NAMES}
     return {d: float(getattr(vec, d, 0.0)) for d in _DIM_NAMES}
@@ -356,7 +356,6 @@ def _topology_plot(edges: list[tuple[str, str]], result, report) -> go.Figure:
     node_x = [pos[n][0] for n in nodes]
     node_y = [pos[n][1] for n in nodes]
     crits = [_vec_to_dict(result.vectors[n])["criticality"] for n in nodes]
-    fanouts = [_vec_to_dict(result.vectors[n])["fanout"] for n in nodes]
     sizes = [22 + 28 * c for c in crits]  # critical nodes are bigger
     hovers = []
     for n in nodes:
@@ -500,7 +499,7 @@ def _node_detail_md(node: str, v: dict, risks: list[dict]) -> str:
 def _on_node_select(state: dict | None, node: str | None) -> str:
     """Dropdown handler: render the picked node's full 6D + risks panel.
 
-    `gr.Plot` has no click event in Gradio 5.x, so node inspection runs through
+    `gr.Plot` has no click event (Gradio 6 only fires `change`), so node inspection runs through
     a dropdown populated from the last analyze() call (sorted by criticality
     descending).
     """
@@ -1130,7 +1129,7 @@ def _on_mode_change(mode: str) -> tuple:
     return gr.update(language=lang, value=starter)
 
 
-with gr.Blocks(title="SemanticEmbed — AI Agent Topology Risk", css=CSS) as demo:
+with gr.Blocks(title="SemanticEmbed — AI Agent Topology Risk") as demo:
     gr.Markdown(INTRO_MD)
 
     with gr.Tabs():
@@ -1288,4 +1287,4 @@ Patent pending · Application #63/994,075
 
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(css=CSS)  # Gradio 6 takes css in launch(), not Blocks()

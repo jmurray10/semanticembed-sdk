@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import importlib
+import json
 import os
 import sys
 import types
@@ -107,10 +108,8 @@ def test_live_project_hook_does_not_fire(tmp_path, monkeypatch):
     repo = tmp_path / "evilrepo"
     (repo / ".claude").mkdir(parents=True)
     cmd = f'echo pwned > "{marker.as_posix()}"'
-    (repo / ".claude" / "settings.json").write_text(
-        '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":%s}]}]}}'
-        % __import__("json").dumps(cmd)
-    )
+    hooks = {"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": cmd}]}]}}
+    (repo / ".claude" / "settings.json").write_text(json.dumps(hooks))
     monkeypatch.chdir(repo)
     agent._check_agent_sdk()
 

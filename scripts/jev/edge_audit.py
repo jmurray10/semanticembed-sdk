@@ -105,7 +105,7 @@ def audit_file(jev: Jev, path: Path, rel: str, parser: str, edges: list[tuple[st
     else:
         groups = [[e] for e in edges]
         windows = [[e[0], e[1]] for e in edges]
-    for group, names in zip(groups, windows):
+    for group, names in zip(groups, windows, strict=True):
         state = {"file": rel, "snippet": snippet(path, names or [])}
         qs: dict[str, dict] = {}
         for k, (s, t) in enumerate(group):

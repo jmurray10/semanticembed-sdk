@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-
 DIMENSION_NAMES = ["depth", "independence", "hierarchy", "throughput", "criticality", "fanout"]
 
 
@@ -110,7 +109,7 @@ _ACTION_MAP = {
 }
 
 
-def _suggest_actions(categories: dict[str, list["RiskEntry"]]) -> list[str]:
+def _suggest_actions(categories: dict[str, list[RiskEntry]]) -> list[str]:
     """Generate actionable recommendations from risk categories."""
     actions = []
     for cat, entries in categories.items():
@@ -136,7 +135,7 @@ class SemanticResult:
     def dimensions(self, node: str) -> dict[str, float]:
         """Return named dimensions for a node."""
         v = self.vectors[node]
-        return dict(zip(DIMENSION_NAMES, v))
+        return dict(zip(DIMENSION_NAMES, v, strict=False))
 
     @property
     def nodes(self) -> list[str]:

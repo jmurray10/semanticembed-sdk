@@ -15,7 +15,6 @@ import pytest
 
 from semanticembed import extract
 
-
 FIXTURES = Path(__file__).parent / "fixtures"
 
 

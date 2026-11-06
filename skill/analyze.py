@@ -6,8 +6,11 @@ reads the structured output, and reasons about it natively. No local LLM.
 
 Modes:
   --path <dir>       Scan a directory for infrastructure files and encode.
-                     Uses se.find_edges() (deterministic; no network egress
-                     beyond the encode call to Railway).
+                     Uses se.extract.from_directory(): deterministic parsers
+                     only. File contents never leave the machine; only the
+                     extracted edge list goes to the encode API. (It does not
+                     use se.find_edges(), whose fallback sends file text to an
+                     LLM provider.)
   --edges <json>     Encode an explicit edge list.  Format: [["a","b"], ...]
                      Use this when the user describes the architecture in prose
                      -- Claude extracts the edges, this script encodes them.
@@ -43,20 +46,19 @@ from semanticembed.exceptions import (
     SemanticEmbedError,
 )
 
-
 _DIM_NAMES = ("depth", "independence", "hierarchy", "throughput", "criticality", "fanout")
 
 
 def _vec_dict(vec: Any) -> dict[str, float]:
     if isinstance(vec, list):
-        return {d: float(v) for d, v in zip(_DIM_NAMES, vec)}
+        return {d: float(v) for d, v in zip(_DIM_NAMES, vec, strict=False)}
     if isinstance(vec, dict):
         return {d: float(vec.get(d, 0.0)) for d in _DIM_NAMES}
     return {d: float(getattr(vec, d, 0.0)) for d in _DIM_NAMES}
 
 
 def _load_edges(arg: str) -> list[list[str]]:
-    """Accept a path to a JSON file, a path to a dir (use find_edges), or an inline JSON string."""
+    """Accept a path to a JSON file, a path to a dir (deterministic scan), or an inline JSON string."""
     p = Path(arg)
     if p.is_file():
         text = p.read_text(encoding="utf-8", errors="replace")
@@ -71,7 +73,7 @@ def _load_edges(arg: str) -> list[list[str]]:
             sys.exit(1)
         return [_norm(e) for e in edges]
     if p.is_dir():
-        edges, sources, _log = se.find_edges(str(p))
+        edges, sources = se.extract.from_directory(str(p))
         if not edges:
             print(f"ERROR: no edges found by deterministic scan of {arg}", file=sys.stderr)
             sys.exit(1)
@@ -103,7 +105,7 @@ def _norm(e: Any) -> list[str]:
 
 def _print_table(edges: list[list[str]], result, risk_report) -> None:
     print(f"\n{'=' * 60}")
-    print(f"SemanticEmbed 6D Analysis")
+    print("SemanticEmbed 6D Analysis")
     print(
         f"{result.graph_info['nodes']} nodes  |  {result.graph_info['edges']} edges  "
         f"|  {result.encoding_time_ms:.1f}ms"
@@ -181,7 +183,7 @@ def main() -> int:
         description="SemanticEmbed 6D structural analysis (Claude Code skill helper)",
     )
     src = parser.add_mutually_exclusive_group()
-    src.add_argument("--path", help="Directory to scan with se.find_edges()")
+    src.add_argument("--path", help="Directory to scan with the deterministic parsers")
     src.add_argument("--edges", help="Inline JSON edge list, path to JSON, or path to a directory")
     parser.add_argument("--before", help="Drift mode: edges or path for the 'before' state")
     parser.add_argument("--after", help="Drift mode: edges or path for the 'after' state")

@@ -7,7 +7,7 @@ interactive auth on your machine.
 ## One-time prereqs
 
 ```bash
-pip install -U huggingface_hub gradio
+pip install -U huggingface_hub "gradio>=6.31,<7"
 hf auth login            # opens a browser; paste a write token from huggingface.co/settings/tokens
 ```
 
@@ -76,8 +76,9 @@ still need either Path A or B.
 
 ## Refreshing examples from the SDK repo
 
-The four files in `huggingface/examples/` are copies of canonical
-fixtures in the parent `examples/` directory. To resync before a deploy:
+`huggingface/examples/` has 8 files. Four are copies of canonical
+fixtures in the parent `examples/` directory; `build.sh` refreshes those.
+The four `*_after.*` files are maintained by hand. To resync before a deploy:
 
 ```bash
 bash huggingface/build.sh
@@ -106,8 +107,8 @@ If `semanticembed` ships a breaking change (e.g. a function rename) and
 the Space breaks, either:
 
 - Pin a known-good version in `requirements.txt`
-  (`semanticembed[extract]==0.7.2`), or
+  (`semanticembed[extract]==0.7.5`), or
 - Update `app.py` to match the new API and re-push.
 
-The `>=` pin in the current `requirements.txt` accepts patch and minor
-upgrades, which is fine within the v0.7.x line.
+The `>=` pin in the current `requirements.txt` accepts patch upgrades and
+also future minor versions (0.8 and later), which may change the API.

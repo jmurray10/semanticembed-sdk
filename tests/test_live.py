@@ -12,7 +12,6 @@ import respx
 import semanticembed as se
 from semanticembed import live
 
-
 ENV_URL = "https://abc12345.live.dynatrace.com"
 
 

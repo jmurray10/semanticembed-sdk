@@ -10,10 +10,7 @@ import shutil
 import textwrap
 from pathlib import Path
 
-import pytest
-
 from semanticembed import extract
-
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

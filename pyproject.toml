@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]  # 1.27+ writes PEP 639 license metadata
 build-backend = "hatchling.build"
 
 [project]
@@ -7,8 +7,9 @@ name = "semanticembed"
 version = "0.7.5"
 description = "6D structural intelligence for directed graphs. Six numbers per node. Sub-millisecond."
 readme = "README.md"
-license = {text = "Proprietary"}
-requires-python = ">=3.9"
+license = "LicenseRef-Proprietary"
+license-files = ["LICENSE", "LICENSE-FAQ.md"]
+requires-python = ">=3.10"
 authors = [
     {name = "Jeff Murray", email = "jeff.murray@alumni.upenn.edu"},
 ]
@@ -18,11 +19,13 @@ classifiers = [
     "Intended Audience :: Developers",
     "Topic :: Software Development :: Libraries",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3 :: Only",
+    "Typing :: Typed",
 ]
 dependencies = [
     "httpx>=0.24",
@@ -33,12 +36,15 @@ extract = ["pyyaml>=6.0"]
 agent-claude = ["claude-agent-sdk>=0.1.60", "pyyaml>=6.0"]
 agent-gemini = ["google-genai", "pyyaml>=6.0"]
 all = ["pyyaml>=6.0", "claude-agent-sdk>=0.1.60", "google-genai"]
-dev = ["pytest>=7", "respx>=0.20", "pyyaml>=6.0"]
+# respx 0.20.0 fails with every httpx release; 0.20.2 is the oldest that works.
+dev = ["pytest>=7", "respx>=0.20.2", "pyyaml>=6.0", "ruff>=0.17", "mypy>=2.0", "types-PyYAML"]
 
 [project.urls]
 Homepage = "https://github.com/jmurray10/semanticembed-sdk"
-Documentation = "https://github.com/jmurray10/semanticembed-sdk"
+Documentation = "https://github.com/jmurray10/semanticembed-sdk/tree/main/docs"
 Repository = "https://github.com/jmurray10/semanticembed-sdk"
+Changelog = "https://github.com/jmurray10/semanticembed-sdk/blob/main/CHANGELOG.md"
+Issues = "https://github.com/jmurray10/semanticembed-sdk/issues"
 
 [project.scripts]
 semanticembed-agent = "semanticembed.agent.agent:main"
@@ -54,3 +60,31 @@ pythonpath = ["src"]
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+extend-exclude = [
+    "examples",              # sample inputs for the parsers, kept as users write them
+    "huggingface/examples",
+    "tests/fixtures",
+    "notebooks",
+]
+
+[tool.ruff.lint]
+# pyflakes + import order + syntax upgrades + likely bugs. Style rules are left out.
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "ASYNC", "SIM115", "RUF100"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["semanticembed"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src/semanticembed"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+# Optional extras without type information.
+module = ["anthropic.*", "claude_agent_sdk.*", "google.*", "mcp.*"]
+ignore_missing_imports = true

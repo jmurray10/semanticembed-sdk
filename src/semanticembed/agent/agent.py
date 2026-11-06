@@ -29,7 +29,6 @@ import asyncio
 import json
 import os
 import re
-import sys
 import tempfile
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
@@ -41,7 +40,6 @@ from claude_agent_sdk import (
     query,
     tool,
 )
-
 
 # ---------------------------------------------------------------------------
 # Tools — the agent can call these autonomously
@@ -327,7 +325,7 @@ def agent_options(workdir: str) -> ClaudeAgentOptions:
 async def run_agent(prompt: str, path: str = "."):
     """Run the agent with a given prompt."""
     _check_agent_sdk()
-    path = os.path.abspath(path)
+    path = os.path.abspath(path)  # noqa: ASYNC240 - string work, no I/O worth offloading
     with tempfile.TemporaryDirectory(prefix="semanticembed-agent-") as workdir:
         options = agent_options(workdir)
         full_prompt = f"Working directory: {path}\n\n{prompt}"
@@ -339,7 +337,7 @@ async def run_agent(prompt: str, path: str = "."):
 async def interactive(path: str = "."):
     """Run the agent in interactive mode."""
     _check_agent_sdk()
-    path = os.path.abspath(path)
+    path = os.path.abspath(path)  # noqa: ASYNC240 - string work, no I/O worth offloading
     with tempfile.TemporaryDirectory(prefix="semanticembed-agent-") as workdir:
         await _interactive(path, agent_options(workdir))
 
@@ -369,7 +367,9 @@ async def _interactive(path: str, options: ClaudeAgentOptions):
     # Follow-up loop
     while True:
         try:
-            user_input = input("\n> ").strip()
+            # Blocking on purpose: nothing else runs while waiting for the user,
+            # and input() in the main thread keeps Ctrl-C behaving normally.
+            user_input = input("\n> ").strip()  # noqa: ASYNC250
         except (EOFError, KeyboardInterrupt):
             break
         if user_input.lower() in ("quit", "exit", "q"):

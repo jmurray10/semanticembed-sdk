@@ -21,10 +21,8 @@ import os
 import re
 from collections import Counter
 from pathlib import Path
-from typing import Optional
 
 from . import extract
-
 
 _LLM_SYSTEM = """You extract directed service-dependency edges from architecture artifacts.
 Output ONLY a JSON object with a single key "edges": a list of [source, target] pairs.
@@ -39,9 +37,9 @@ def find_edges(
     path: str = ".",
     *,
     provider: str = "claude",
-    model: Optional[str] = None,
-    api_key: Optional[str] = None,
-    max_nodes: Optional[int] = None,
+    model: str | None = None,
+    api_key: str | None = None,
+    max_nodes: int | None = None,
 ) -> tuple[list[tuple[str, str]], dict[str, int], list[str]]:
     """Discover directed dependency edges in `path`.
 
@@ -79,7 +77,7 @@ def find_edges(
     edges, sources = extract.from_directory(path)
     if edges:
         log.append(f"deterministic scan found {len(edges)} edges from {sources}")
-        edges = [tuple(e) for e in edges]
+        edges = [(e[0], e[1]) for e in edges]
         if max_nodes is not None:
             edges = _prune_to_max_nodes(edges, max_nodes, log)
         return edges, sources, log
@@ -331,8 +329,8 @@ def _parse_edges_from_text(text: str) -> list[list[str]]:
 
 def _extract_with_claude(
     files: list[tuple[str, str]],
-    model: Optional[str],
-    api_key: Optional[str],
+    model: str | None,
+    api_key: str | None,
     log: list[str],
 ) -> list[list[str]]:
     try:
@@ -359,8 +357,8 @@ def _extract_with_claude(
 
 def _extract_with_gemini(
     files: list[tuple[str, str]],
-    model: Optional[str],
-    api_key: Optional[str],
+    model: str | None,
+    api_key: str | None,
     log: list[str],
 ) -> list[list[str]]:
     try:

@@ -17,7 +17,6 @@ Requirements:
 
 import json
 import sys
-from typing import Any
 
 try:
     from google import genai
@@ -321,7 +320,10 @@ def run_agent_loop(client: genai.Client, model: str, messages: list, path: str) 
     return "Agent reached maximum iterations."
 
 
-def interactive(path: str = "."):
+DEFAULT_MODEL = "gemini-2.5-flash"
+
+
+def interactive(path: str = ".", model: str = DEFAULT_MODEL):
     """Run the agent in interactive mode."""
     import os
     api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
@@ -330,7 +332,6 @@ def interactive(path: str = "."):
         sys.exit(1)
 
     client = genai.Client(api_key=api_key)
-    model = "gemini-2.5-flash"
 
     print("SemanticEmbed Agent (Gemini)")
     print("=" * 40)
@@ -369,7 +370,7 @@ def interactive(path: str = "."):
         print(result)
 
 
-def run_single(prompt: str, path: str = "."):
+def run_single(prompt: str, path: str = ".", model: str = DEFAULT_MODEL):
     """Run a single query."""
     import os
     api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
@@ -378,7 +379,6 @@ def run_single(prompt: str, path: str = "."):
         sys.exit(1)
 
     client = genai.Client(api_key=api_key)
-    model = "gemini-2.5-flash"
 
     messages = [
         types.Content(role="user", parts=[types.Part(text=f"Working directory: {path}\n\n{prompt}")]),
@@ -392,14 +392,14 @@ def main():
     parser = argparse.ArgumentParser(description="SemanticEmbed Agent (Gemini)")
     parser.add_argument("path", nargs="?", default=".", help="Directory to analyze")
     parser.add_argument("--ask", "-a", type=str, default=None, help="Ask a specific question")
-    parser.add_argument("--model", "-m", type=str, default="gemini-2.5-flash",
-                        help="Gemini model (default: gemini-2.5-flash)")
+    parser.add_argument("--model", "-m", type=str, default=DEFAULT_MODEL,
+                        help=f"Gemini model (default: {DEFAULT_MODEL})")
     args = parser.parse_args()
 
     if args.ask:
-        run_single(args.ask, args.path)
+        run_single(args.ask, args.path, model=args.model)
     else:
-        interactive(args.path)
+        interactive(args.path, model=args.model)
 
 
 if __name__ == "__main__":

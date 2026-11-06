@@ -43,8 +43,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from jev_client import Jev, JevError  # noqa: E402
-from questions import LEAK_ALL_QUESTIONS, LEAK_CONTEXT, LEAK_QUESTIONS, LEAK_REASONS, NO, YES  # noqa: E402
+from jev_client import Jev, JevError
+from questions import LEAK_ALL_QUESTIONS, LEAK_CONTEXT, LEAK_QUESTIONS, LEAK_REASONS, NO, YES
 
 MAX_LINES = 120  # longer runs are split so each request stays focused
 OVERLAP = 10     # consecutive pieces share lines so no sentence falls between them

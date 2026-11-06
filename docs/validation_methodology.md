@@ -47,12 +47,14 @@ topology-relevant** after filtering (see "What we filtered" below).
 The SDK call:
 
 ```python
+from semanticembed import encode, report
+
 result = encode(edges)             # 6D vectors per service
 risks = report(result)             # structural risk classifications
 ```
 
 Returns risk entries with categories `SINGLE_POINT_OF_FAILURE`,
-`DEEP_BOTTLENECK`, `AMPLIFICATION_CASCADE`, `CONVERGENCE_SINK`,
+`DEEP_BOTTLENECK`, `AMPLIFICATION_RISK`, `CONVERGENCE_SINK`,
 `MONITORING_GAP_CANDIDATE`. Each entry has a `node`, a `category`, and a
 `severity` (`critical` / `warning` / `info`). The classification
 thresholds run server-side; the SDK only sees the labels.
@@ -158,8 +160,8 @@ email **jeff.murray@alumni.upenn.edu** with `[validation]` in the subject.
 
 ## Why the full reproduction script isn't public
 
-The matching/scoring code that produced the 79.6% number sits in our
-private repo (`jmurray10/6d-sdk`) because:
+The matching/scoring code that produced the 79.6% number sits in a
+private repository because:
 
 - It hardcodes the Dynatrace tenant we ran the test against.
 - It includes the full server-side risk classifier (the thresholds and

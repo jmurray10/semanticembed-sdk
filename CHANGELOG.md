@@ -2,6 +2,43 @@
 
 All notable changes to the SemanticEmbed SDK.
 
+## Unreleased
+
+### Changed
+
+- **Python 3.10 or newer.** Python 3.9 reached end of life in October 2025.
+  Tested on 3.10–3.14. pip on 3.9 keeps installing 0.7.5.
+- **Type hints ship with the package** (`py.typed`). Corrected hints:
+  `drift()` and `encode_diff()` return `dict[str, dict[str, Any]]` (a float
+  per dimension, or a `before` / `after` / `delta` dict with `detail=True`).
+- **License metadata** uses the PEP 639 form
+  (`License-Expression: LicenseRef-Proprietary`). The license terms are
+  unchanged.
+
+### Fixed
+
+- **`semanticembed-gemini-agent`** failed with `ModuleNotFoundError:
+  claude_agent_sdk` when only `[agent-gemini]` was installed. The Claude
+  agent is now imported on first use.
+- **The Gemini agent's `--model`** was parsed and then ignored; it now
+  reaches the model call.
+- **The Claude Code skill's `--path` scan** (`skill/analyze.py`) used
+  `find_edges()`, whose fallback sends file text to Anthropic when no
+  parser matches. It now uses the deterministic `extract.from_directory()`,
+  so file contents stay on the machine, as the skill says.
+- **`aencode_file()`** reads the file in a worker thread instead of
+  blocking the event loop.
+- **Directory scans** close the files they peek at (`from_directory`).
+- **Hugging Face Space** runs on Gradio 6 (`css` moved to `launch()`), and
+  its drift smoke test expects the five outputs the endpoint returns.
+
+### Development
+
+- CI runs `ruff check` and `mypy`, tests Python 3.10–3.14, and tests the
+  oldest dependency versions the package allows (`httpx` 0.24). The `dev`
+  extra adds ruff and mypy and needs `respx>=0.20.2` (0.20.0 fails with
+  every httpx release).
+
 ## 0.7.5 — Security fixes, parser corrections
 
 ### Security
@@ -72,7 +109,7 @@ All notable changes to the SemanticEmbed SDK.
   form real modules use almost universally. The ref regex previously matched
   only `type.name.` and missed them. The note below this release said
   that went from 2 to 56 edges; a remeasure of vpc `b3abd6df` is under
-  Unreleased (119 edges / 96 nodes with the current parser).
+  0.7.5 (119 edges / 96 nodes with the current parser).
 - **`extract.from_directory`** now detects Kubernetes manifests by content
   (`apiVersion` + `kind`) in any directory, not just conventional names like
   `k8s/` / `manifests/`. Manifests under `release/` or `kubernetes-manifests/`

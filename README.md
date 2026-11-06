@@ -31,7 +31,7 @@ SemanticEmbed computes a 6-dimensional structural encoding for every node in a d
 Observability tools tell you **what broke**. SemanticEmbed tells you **what will break** — from topology alone.
 
 - **No agents, no instrumentation** — just an edge list
-- **Sub-millisecond server-side compute is not something this SDK can show.** `result.encoding_time_ms` is the HTTP round trip, not a kernel timer. The encode response has no separate compute-time field. From this environment on 2026-11-04 a 7-node graph returned in about 0.3–0.4 s, which is faster than the old "typically 0.5–2 s" line. A 100-node kernel time is not measurable on the free tier (the client refuses graphs over 50 nodes before the request).
+- **Sub-millisecond server-side compute is not something this SDK can show.** `result.encoding_time_ms` is the HTTP round trip, not a kernel timer. The encode response has no separate compute-time field. From this environment on 2026-11-04 a 7-node graph returned in about 0.3–0.4 s. Without a license key the client refuses graphs over 50 nodes before sending them.
 - **Works on any directed graph** — AI agent pipelines, microservices, data workflows, CI/CD
 - **Complementary structural axes** — six dimensions, each captures risk signals the others cannot
 - **16 deterministic edge parsers + 3 live connectors** — docker-compose, Kubernetes, GitHub Actions, Terraform, CloudFormation, CDK, Pulumi, Python imports, package.json, npm workspaces, pyproject.toml, requirements.txt, OTel JSON, LangGraph, CrewAI, AutoGen; plus Dynatrace, Honeycomb, and Datadog clients
@@ -41,10 +41,14 @@ Observability tools tell you **what broke**. SemanticEmbed tells you **what will
 ## Install
 
 ```bash
-pip install semanticembed              # core
-pip install 'semanticembed[extract]'   # adds pyyaml for k8s/CFN/CDK parsing
-pip install 'semanticembed[agent-claude]'  # adds Claude agent CLI
+pip install semanticembed                  # core (httpx only)
+pip install 'semanticembed[extract]'       # adds pyyaml for compose / Kubernetes / GitHub Actions / CloudFormation YAML
+pip install 'semanticembed[agent-claude]'  # adds the Claude agent CLI
+pip install 'semanticembed[agent-gemini]'  # adds the Gemini agent CLI
+pip install 'semanticembed[all]'           # all of the above
 ```
+
+Requires Python 3.10 or newer (tested on 3.10–3.14). The package ships type hints.
 
 **Free tier:** up to 50 nodes per graph, no signup. See [CHANGELOG](CHANGELOG.md) for what's new.
 
@@ -160,6 +164,9 @@ correlation results vs standard graph centrality.
 
 ## What's new in v0.7
 
+- **Security fixes** — the agent CLI no longer runs a scanned project's hooks, `find_edges()` redacts secrets before any LLM call, `-r` includes stay inside their directory (v0.7.5)
+- **Parser corrections** — CrewAI decorators, LangGraph `Command` / `Send`, Terraform name collisions, `pyproject.toml` and `requirements.txt` parsers (v0.7.5)
+- **Terraform `count` / `for_each` and Kubernetes auto-detect fixes** (v0.7.4)
 - **Modern AutoGen patterns + lenient edge parser + better error messages** (v0.7.3)
 - **`live.from_dynatrace` / `from_honeycomb` / `from_datadog`** — pull real call edges from running infra (v0.5–v0.7)
 - **OpenTelemetry trace ingestion** — auto-detects OTLP / Jaeger / Zipkin (v0.3)
@@ -169,7 +176,7 @@ correlation results vs standard graph centrality.
 - **`encode(cache=True)`** — skip the HTTP round trip on repeat calls (v0.4.1)
 - **`dedupe_edges`** — canonicalize names when blending multiple sources (v0.3)
 - **One-retry-on-5xx** — every connector handles transient failures (v0.7.2)
-- **`semanticembed-agent` console script** — interactive shell for non-programmer users (v0.5.1)
+- **`semanticembed-agent` and `semanticembed-gemini-agent` console scripts** — interactive shell for non-programmer users (v0.5.1)
 
 Full details in the [CHANGELOG](CHANGELOG.md).
 
@@ -231,6 +238,11 @@ edges = se.extract.from_python_imports("src/")
 # From Node.js monorepo (inter-package dependencies)
 edges = se.extract.from_package_json_workspaces(".")
 
+# From a single package's dependency list
+edges = se.extract.from_package_json("package.json")
+edges = se.extract.from_pyproject("pyproject.toml")       # PEP 621, dependency groups, Poetry
+edges = se.extract.from_requirements("requirements.txt")  # follows -r only inside its own directory
+
 # From OpenTelemetry traces (OTLP / Jaeger / Zipkin JSON)
 edges = se.extract.from_otel_traces("traces.json")
 
@@ -269,6 +281,8 @@ root and `from_directory()` will pick it up.
 Static analysis is great for repos. For *running* infra, pull traces directly:
 
 ```python
+import os
+
 from semanticembed import live
 
 # Dynatrace — Smartscape services + call relationships
@@ -472,6 +486,8 @@ function App() {
 SemanticEmbed accepts any directed graph as an edge list.
 
 ```python
+from semanticembed import encode, encode_file
+
 # Python tuples
 edges = [("A", "B"), ("B", "C")]
 result = encode(edges)

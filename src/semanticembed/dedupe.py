@@ -10,8 +10,7 @@ cleanly.
 from __future__ import annotations
 
 import re
-from typing import Iterable, Optional
-
+from collections.abc import Callable, Iterable
 
 _CAMEL_SPLIT_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 
@@ -33,8 +32,8 @@ def _to_kebab(name: str) -> str:
     return s.replace("_", "-")
 
 
-_NORMALIZERS = {
-    "none": lambda n: n,
+_NORMALIZERS: dict[str, Callable[[str], str]] = {
+    "none": str,
     "snake": _to_snake,
     "lower": _to_lower,
     "kebab": _to_kebab,
@@ -45,7 +44,7 @@ def dedupe_edges(
     edges: Iterable,
     *,
     normalize: str = "none",
-    aliases: Optional[dict[str, str]] = None,
+    aliases: dict[str, str] | None = None,
     drop_self_loops: bool = True,
 ) -> list[tuple[str, str]]:
     """Remove duplicate edges and (optionally) canonicalize node names.
