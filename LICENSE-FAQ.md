@@ -44,7 +44,7 @@ Two things:
 1. **The 6D encoding algorithm.** It runs server-side at the SemanticEmbed
    cloud API; it's not in this repo. Patent application
    [#63/994,075](#patent) covers the encoding method.
-2. **The SDK code in this repo.** All rights reserved per LICENSE.txt;
+2. **The SDK code in this repo.** All rights reserved per [LICENSE](LICENSE);
    "All rights reserved" means the standard copyright defaults, modified
    only by the explicit grants in the license.
 

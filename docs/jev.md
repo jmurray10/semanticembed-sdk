@@ -39,6 +39,8 @@ hosted server does, or add code that does the server's work here?".
   they state the guard's own cutoffs. The list is exact paths in
   `leak_guard.py`.
 - If Jev cannot be reached, or the key is missing, the check fails (exit 2).
+  The exception is Dependabot: its pull requests get no secrets, so the
+  guard is skipped with a notice and the version bumps are reviewed by hand.
 
 The workflow runs the guard's code from the base branch, so a pull request
 cannot change what runs with the key. Pull requests from forks get no

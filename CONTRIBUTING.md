@@ -29,15 +29,24 @@ proprietary product, so contribution scope is intentionally narrow.
 
 ## Development setup
 
+The SDK needs Python 3.10 or newer.
+
 ```bash
 git clone https://github.com/jmurray10/semanticembed-sdk
 cd semanticembed-sdk
 pip install -e '.[dev,extract]'
 pytest
+ruff check .
+mypy
 ```
 
-The dev extras pull in `pytest`, `respx`, and `pyyaml`. All HTTP calls in
-the test suite are respx-mocked — no live network or credentials needed.
+The dev extras pull in `pytest`, `respx`, `pyyaml`, `ruff`, `mypy`, and
+`types-PyYAML`. All HTTP calls in the test suite are respx-mocked — no live
+network or credentials needed.
+
+CI runs the tests on Python 3.10–3.14 (Ubuntu) and 3.12 (Windows, macOS),
+runs `ruff check .` and `mypy`, and runs the tests once more against the
+oldest dependency versions the package allows.
 
 ## Pull-request checklist
 
@@ -50,20 +59,31 @@ the test suite are respx-mocked — no live network or credentials needed.
    roll it into the next version on merge).
 5. **No new runtime deps** without prior discussion. The SDK keeps a
    minimal footprint (currently just `httpx`).
+6. **Checks pass** — `pytest`, `ruff check .`, and `mypy` are clean, and
+   so is the "Check added lines" leak guard ([docs/jev.md](docs/jev.md)).
+   PRs from forks get no secrets, so the leak guard fails there; a
+   maintainer reviews the added lines by hand instead.
 
 ## Releasing (maintainers)
 
-Tag pushes to `v*` trigger the `publish.yml` workflow, which uses PyPI
-Trusted Publishing (no token to manage). Steps:
+`main` is protected. Every change, releases included, goes through a PR
+that must pass CI and the leak guard. There is no direct push to `main`.
 
-```bash
-# bump version in pyproject.toml AND src/semanticembed/__init__.py
-git commit -am "vX.Y.Z: description"
-git push
-git tag -a vX.Y.Z -m "vX.Y.Z — short summary"
-git push origin vX.Y.Z
-# workflow builds + publishes within ~2 minutes
-```
+1. Open a PR that bumps the version in `pyproject.toml` and
+   `src/semanticembed/__init__.py` (`__version__`), and adds the
+   CHANGELOG entry.
+2. After it merges, tag the merge commit on `main` and push the tag:
+
+   ```bash
+   git tag -a vX.Y.Z -m "X.Y.Z" <merge-commit-on-main>
+   git push origin vX.Y.Z
+   ```
+
+3. The tag starts `publish.yml`. It checks that the tagged commit is on
+   `main` and that the tag matches both version strings, runs the tests,
+   and builds the package. It then waits for approval on the `pypi`
+   environment before uploading through PyPI Trusted Publishing (no token
+   to manage).
 
 ## Questions
 

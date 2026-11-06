@@ -36,8 +36,8 @@ of 4 reference topologies (Online Boutique, Sock Shop, AI agent pipeline,
 CI/CD pipeline), Independence shows |r| < 0.15 against degree, betweenness,
 closeness, and eigenvector centrality. Lateral redundancy is a structural
 feature most centrality measures don't model directly; it's captured here as
-a first-class axis. (The benchmark and correlation table are reproducible
-from `examples/` plus the SDK's `extract.from_directory()`.)
+a first-class axis. The four topologies are in `examples/`; the correlation
+script is not in this repo.
 
 ---
 

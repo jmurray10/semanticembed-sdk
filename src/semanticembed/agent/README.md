@@ -22,7 +22,7 @@ Your Code  ──→  Agent scans for infra files (docker-compose, k8s, terrafor
               Plain language analysis + actionable recommendations
 ```
 
-The 6D encoding is deterministic and proprietary (runs server-side). The LLM only sees the output vectors and risk report — never the algorithm.
+The 6D encoding is deterministic and proprietary (runs server-side). The LLM sees the tool results (edge lists, encoding output, risk report) — never the algorithm.
 
 ## Install
 
@@ -38,7 +38,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 ### Gemini Agent (Google)
 
 ```bash
-pip install semanticembed google-genai pyyaml
+pip install 'semanticembed[agent-gemini]'
 export GOOGLE_API_KEY=...
 ```
 
@@ -69,7 +69,7 @@ semanticembed-gemini-agent /path/to/project
 # Single question
 semanticembed-gemini-agent --ask "What happens if the database goes down?"
 
-# Use a different Gemini model
+# Use a different Gemini model (default: gemini-2.5-flash)
 semanticembed-gemini-agent --model gemini-2.5-pro
 ```
 
@@ -155,7 +155,7 @@ to direct postgres if cache is unavailable.
 
 ```python
 import asyncio
-from agent import run_agent
+from semanticembed.agent import run_agent
 
 # Single query
 asyncio.run(run_agent(
@@ -167,6 +167,9 @@ asyncio.run(run_agent(
 ## Privacy
 
 - The 6D encoding runs server-side (SemanticEmbed API) — your topology edges are sent to the encoding server
-- The LLM (Anthropic) sees only the encoding output (6D vectors, risk report) — not your raw code or infrastructure files
+- The LLM sees your prompts and what the SemanticEmbed tools return: edge lists (node names), which parsers found them, encoding results, and error messages. That goes to Anthropic's API (Claude agent) or Google's API (Gemini agent). The parsers run locally; the tools return edges and error messages, not whole files.
 - The encoding algorithm is proprietary — neither you nor the LLM ever sees how it works
-- Use Ollama for fully local LLM inference if needed (modify the model in agent.py)
+
+## Isolation
+
+The Claude agent (0.7.5+) keeps the scanned project out of its own configuration. It loads no settings files, hooks or `CLAUDE.md` from the project. It has no built-in tools (no shell, file read, write or web fetch), only the SemanticEmbed tools above. It runs in an empty temporary directory. It refuses to start on `claude-agent-sdk` older than 0.1.60, which loaded hooks from the scanned project.

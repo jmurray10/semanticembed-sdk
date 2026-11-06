@@ -1,16 +1,16 @@
 # Setup Guide
 
-One dependency.
+One install command.
 
 ## SemanticEmbed SDK
 
 ```bash
-pip install 'semanticembed[extract]'
+pip install -U 'semanticembed[extract]>=0.7.5'
 ```
 
-The `[extract]` extra adds `pyyaml` for parsing docker-compose / Kubernetes
-manifests. Without it, the deterministic directory scan can't read YAML, and
-you'd be limited to passing edges directly via `--edges`.
+This installs the SDK (with `httpx`) and the `[extract]` extra, which adds
+`pyyaml` for parsing docker-compose / Kubernetes manifests. Without it, the
+deterministic directory scan skips YAML files.
 
 ## License key (optional)
 
@@ -47,15 +47,14 @@ python3 /path/to/skill/analyze.py --path .
 | `SEMANTICEMBED_LICENSE_KEY` | Unlocks >50-node graphs |
 | `SEMANTICEMBED_API_URL` | Override the API endpoint (testing) |
 
-## What changed in v0.2.3
+## How `--path` finds edges
 
-The skill no longer requires Ollama or any local LLM. Edge extraction now
-uses either:
+`--path <dir>` runs the deterministic parsers in `se.extract.from_directory()`
+(docker-compose, Kubernetes YAML, GitHub Actions, Terraform, package.json,
+pyproject.toml, requirements.txt, and others). No LLM is called and file
+contents stay on the machine; only the extracted edge list goes to the
+encode API.
 
-- `--path <dir>`: deterministic scan via `se.find_edges()` (docker-compose,
-  k8s YAML, GitHub Actions, Terraform, package.json, pyproject.toml, etc.)
-- `--edges <json>`: explicit edges, when you (or Claude) parsed them
-  from prose, traces, or a custom format.
-
-The parent Claude Code agent does any natural-language extraction natively --
-no second LLM in the loop.
+For prose, traces, or a custom format, the parent Claude Code agent extracts
+the edges itself and passes them with `--edges <json>`. There is no second
+LLM in the loop.

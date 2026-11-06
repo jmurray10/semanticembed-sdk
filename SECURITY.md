@@ -20,7 +20,11 @@ In scope:
 - The published `semanticembed` Python package on PyPI
 - The source in this repository, including `client.py`, `extract.py`,
   `live.py`, `find_edges.py`, `dedupe.py`, and the `agent/` CLI
+- The skills in `skill/` and `.claude/skills/`
+- The Hugging Face Space app in `huggingface/`
 - The PyPI publishing workflow (`.github/workflows/publish.yml`)
+- The workflows that can read `TYPESAFE_API_KEY`
+  (`.github/workflows/leak-guard.yml`, `jev-drift.yml`, `corpus.yml`)
 
 Out of scope (please email instead — these are server-side):
 - The 6D encoding algorithm and risk-detection logic
@@ -29,8 +33,8 @@ Out of scope (please email instead — these are server-side):
 
 ## Supported versions
 
-Only the latest minor version on PyPI receives security fixes. As of this
-writing that's the **0.7.x** line. Older versions should upgrade.
+Only the latest release (currently **0.7.5**) receives security fixes;
+older versions should upgrade. Requires Python 3.10+.
 
 ## Disclosure
 

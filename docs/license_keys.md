@@ -18,8 +18,8 @@ Public pricing page coming soon.
 import semanticembed
 semanticembed.license_key = "se-xxxxxxxxxxxxxxxxxxxx"
 
-# Now unlimited
-result = encode(large_edges)
+# Now up to your plan's node limit
+result = semanticembed.encode(large_edges)
 ```
 
 **Via environment variable:**
@@ -32,7 +32,14 @@ export SEMANTICEMBED_LICENSE_KEY=se-xxxxxxxxxxxxxxxxxxxx
 echo "se-xxxxxxxxxxxxxxxxxxxx" > ~/.semanticembed/license
 ```
 
-The SDK checks these locations in order: explicit assignment, environment variable, config file.
+The SDK uses the first key it finds, in this order:
+
+1. The `license_key=` argument to `encode()` (and the other encode functions).
+2. `semanticembed.license_key`.
+3. The `SEMANTICEMBED_LICENSE_KEY` environment variable, then `SEMANTICEMBED_API_KEY`.
+4. The file `~/.semanticembed/license`.
+
+With no key, requests run on the free tier.
 
 ---
 

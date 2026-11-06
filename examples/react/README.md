@@ -19,6 +19,10 @@ npm install recharts
 
 Components use Tailwind CSS classes. Add Tailwind to your project or replace classes with your own styles.
 
+## License keys
+
+Don't pass a license key from browser code. Anything in the bundle or the request is visible to the user. Call the API through your own server, which adds the key, and pass that server's base URL to the hook: `useSemanticEmbed("https://your-server.example")`. The hook posts to `<base URL>/api/v1/encode`.
+
 ## Quick Start
 
 ```tsx
