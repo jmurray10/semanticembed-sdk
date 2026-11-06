@@ -6,8 +6,11 @@ reads the structured output, and reasons about it natively. No local LLM.
 
 Modes:
   --path <dir>       Scan a directory for infrastructure files and encode.
-                     Uses se.find_edges() (deterministic; no network egress
-                     beyond the encode call to Railway).
+                     Uses se.extract.from_directory(): deterministic parsers
+                     only. File contents never leave the machine; only the
+                     extracted edge list goes to the encode API. (It does not
+                     use se.find_edges(), whose fallback sends file text to an
+                     LLM provider.)
   --edges <json>     Encode an explicit edge list.  Format: [["a","b"], ...]
                      Use this when the user describes the architecture in prose
                      -- Claude extracts the edges, this script encodes them.
@@ -55,7 +58,7 @@ def _vec_dict(vec: Any) -> dict[str, float]:
 
 
 def _load_edges(arg: str) -> list[list[str]]:
-    """Accept a path to a JSON file, a path to a dir (use find_edges), or an inline JSON string."""
+    """Accept a path to a JSON file, a path to a dir (deterministic scan), or an inline JSON string."""
     p = Path(arg)
     if p.is_file():
         text = p.read_text(encoding="utf-8", errors="replace")
@@ -70,7 +73,7 @@ def _load_edges(arg: str) -> list[list[str]]:
             sys.exit(1)
         return [_norm(e) for e in edges]
     if p.is_dir():
-        edges, sources, _log = se.find_edges(str(p))
+        edges, sources = se.extract.from_directory(str(p))
         if not edges:
             print(f"ERROR: no edges found by deterministic scan of {arg}", file=sys.stderr)
             sys.exit(1)
@@ -180,7 +183,7 @@ def main() -> int:
         description="SemanticEmbed 6D structural analysis (Claude Code skill helper)",
     )
     src = parser.add_mutually_exclusive_group()
-    src.add_argument("--path", help="Directory to scan with se.find_edges()")
+    src.add_argument("--path", help="Directory to scan with the deterministic parsers")
     src.add_argument("--edges", help="Inline JSON edge list, path to JSON, or path to a directory")
     parser.add_argument("--before", help="Drift mode: edges or path for the 'before' state")
     parser.add_argument("--after", help="Drift mode: edges or path for the 'after' state")

@@ -55,6 +55,11 @@ def _run(args: list[str], *, env_extra: dict | None = None, stdin: str | None = 
             )
 
         se.encode = _fake_encode
+
+        def _no_llm(*args, **kwargs):
+            raise SystemExit("find_edges() called: the skill must not send files to an LLM")
+
+        se.find_edges = _no_llm
     """)
     cmd = [sys.executable, "-c", bootstrap + f"\nimport runpy; sys.argv = ['analyze'] + {args!r}; runpy.run_path({str(SKILL_SCRIPT)!r}, run_name='__main__')"]
     # The child must import this checkout, not an installed release.
@@ -121,6 +126,16 @@ class TestPathArg:
         assert r.returncode == 0, r.stderr
         assert "web  ->  api" in r.stdout
         assert "api  ->  db" in r.stdout
+
+    def test_directory_scan_sends_no_file_text_to_an_llm(self, tmp_path):
+        # A Python file with no framework imports: the deterministic parsers
+        # find nothing, and the old find_edges() path would have fallen back
+        # to an LLM with the file's text.
+        (tmp_path / "app.py").write_text("SECRET = 'do-not-send'\n")
+        r = _run(["--path", str(tmp_path)], env_extra={"ANTHROPIC_API_KEY": "sk-test"})
+        assert r.returncode == 1
+        assert "find_edges() called" not in r.stderr
+        assert "no edges found" in r.stderr.lower()
 
     def test_empty_directory_exits_1(self, tmp_path):
         r = _run(["--path", str(tmp_path)])
