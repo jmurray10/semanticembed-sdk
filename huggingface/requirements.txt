@@ -1,5 +1,5 @@
-gradio>=5.30,<6
-semanticembed[extract]>=0.7.3
-pandas>=2.0
-networkx>=3.0
-plotly>=5.20
+gradio>=6.31.0,<7
+semanticembed[extract]>=0.7.4
+pandas>=2.3.3
+networkx>=3.4.2
+plotly>=7.1.0
