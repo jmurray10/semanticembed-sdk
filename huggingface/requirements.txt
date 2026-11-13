@@ -1,5 +1,5 @@
 gradio>=6.31.0,<7
-semanticembed[extract]>=0.7.4
+semanticembed[extract]>=0.7.5
 pandas>=2.3.3
 networkx>=3.4.2
 plotly>=7.1.0
